@@ -108,6 +108,7 @@ async def worker() -> None:
                     chat_id=job.chat_id,
                     video=FSInputFile(str(result.file_path)),
                     caption=caption,
+                    supports_streaming=True,
                 )
             elif result.media_kind == "photo":
                 try:

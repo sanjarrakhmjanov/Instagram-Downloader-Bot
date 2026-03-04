@@ -276,6 +276,7 @@ class DownloaderService:
                 "noprogress": True,
                 "retries": 3,
                 "continuedl": True,
+                "postprocessor_args": ["-movflags", "+faststart"],
             }
             if self.ffmpeg_location:
                 base_options["ffmpeg_location"] = self.ffmpeg_location
@@ -284,12 +285,21 @@ class DownloaderService:
                 base_options["postprocessors"] = [
                     {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
                 ]
+            else:
+                # Improve mobile playback compatibility.
+                base_options["merge_output_format"] = "mp4"
+                base_options["postprocessors"] = [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]
 
             format_attempts: list[str | None]
             if option == "mp3":
                 format_attempts = ["bestaudio/best", "best", None]
             else:
-                format_attempts = ["bestvideo+bestaudio/best", "best", None]
+                format_attempts = [
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+                    "best[ext=mp4]/bestvideo+bestaudio/best",
+                    "best",
+                    None,
+                ]
 
             last_error: Exception | None = None
             for fmt in format_attempts:
