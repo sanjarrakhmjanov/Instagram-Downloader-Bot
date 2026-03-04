@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     request_timeout_sec: int = Field(default=900, alias="REQUEST_TIMEOUT_SEC")
     max_file_size_mb: int = Field(default=49, alias="MAX_FILE_SIZE_MB")
     welcome_animation_url: str | None = Field(default=None, alias="WELCOME_ANIMATION_URL")
+    welcome_image_url: str | None = Field(default=None, alias="WELCOME_IMAGE_URL")
+    welcome_photo_file_id: str | None = Field(default=None, alias="WELCOME_PHOTO_FILE_ID")
     ffmpeg_path: str | None = Field(default=None, alias="FFMPEG_PATH")
 
     @property

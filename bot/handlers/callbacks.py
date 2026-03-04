@@ -40,7 +40,17 @@ async def cb_set_language(
             pass
         if source == "start":
             is_admin = callback.from_user.id in settings.admin_ids
-            if settings.welcome_animation_url:
+            if settings.welcome_photo_file_id:
+                await callback.message.answer_photo(
+                    settings.welcome_photo_file_id,
+                    caption=tr("start", lang),
+                )
+            elif settings.welcome_image_url:
+                await callback.message.answer_photo(
+                    settings.welcome_image_url,
+                    caption=tr("start", lang),
+                )
+            elif settings.welcome_animation_url:
                 await callback.message.answer_animation(
                     settings.welcome_animation_url,
                     caption=tr("start", lang),
