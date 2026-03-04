@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 import subprocess
 from contextlib import suppress
 from html import escape
@@ -61,23 +62,42 @@ async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -
         "-i",
         str(path),
         "-vf",
-        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        # Strict compatibility profile for older Telegram mobile decoders.
+        "scale='min(1280,iw)':-2:flags=lanczos,fps=30,format=yuv420p",
+        "-vsync",
+        "cfr",
+        "-r",
+        "30",
         "-c:v",
         "libx264",
         "-pix_fmt",
         "yuv420p",
         "-profile:v",
-        "high",
+        "baseline",
         "-level",
-        "4.1",
+        "3.0",
+        "-x264-params",
+        "keyint=60:min-keyint=60:scenecut=0",
         "-preset",
         "veryfast",
         "-crf",
-        "23",
+        "24",
+        "-maxrate",
+        "2500k",
+        "-bufsize",
+        "5000k",
+        "-g",
+        "60",
         "-c:a",
         "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
         "-b:a",
-        "128k",
+        "96k",
+        "-max_muxing_queue_size",
+        "2048",
         "-movflags",
         "+faststart",
         str(converted),
@@ -101,12 +121,16 @@ async def worker() -> None:
     setup_json_logging(settings.log_level)
     await init_db()
 
+    ffmpeg_bin = settings.ffmpeg_path or shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        logger.warning("ffmpeg not found, mobile video compatibility conversion is disabled")
+
     redis = Redis.from_url(settings.redis_dsn, decode_responses=True)
     queue = QueueService(redis)
     downloader = DownloaderService(
         settings.download_dir,
         settings.request_timeout_sec,
-        ffmpeg_location=settings.ffmpeg_path,
+        ffmpeg_location=ffmpeg_bin,
     )
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
@@ -153,7 +177,7 @@ async def worker() -> None:
                 )
             elif result.media_kind == "video":
                 video_path = await _ensure_mobile_compatible_video(
-                    result.file_path, settings.ffmpeg_path
+                    result.file_path, ffmpeg_bin
                 )
                 if video_path != result.file_path:
                     generated_paths.append(video_path)
