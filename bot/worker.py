@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import subprocess
 from contextlib import suppress
 from html import escape
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from aiogram import Bot
@@ -49,6 +51,51 @@ def _format_label(media_kind: str, option: str) -> str:
     return "FILE"
 
 
+async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -> Path:
+    if not ffmpeg_path:
+        return path
+    converted = path.with_name(f"{path.stem}.mobile.mp4")
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        str(path),
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.1",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        str(converted),
+    ]
+
+    def _run() -> int:
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        return proc.returncode
+
+    code = await asyncio.to_thread(_run)
+    if code != 0 or not converted.exists() or converted.stat().st_size == 0:
+        with suppress(Exception):
+            if converted.exists():
+                converted.unlink()
+        return path
+    return converted
+
+
 async def worker() -> None:
     settings = get_settings()
     setup_json_logging(settings.log_level)
@@ -74,6 +121,7 @@ async def worker() -> None:
             text=tr("processing", job.language, progress=_render_progress("0")),
         )
         result = None
+        generated_paths: list[Path] = []
 
         async def on_progress(progress_text: str) -> None:
             with suppress(Exception):
@@ -104,9 +152,14 @@ async def worker() -> None:
                     caption=caption,
                 )
             elif result.media_kind == "video":
+                video_path = await _ensure_mobile_compatible_video(
+                    result.file_path, settings.ffmpeg_path
+                )
+                if video_path != result.file_path:
+                    generated_paths.append(video_path)
                 await bot.send_video(
                     chat_id=job.chat_id,
-                    video=FSInputFile(str(result.file_path)),
+                    video=FSInputFile(str(video_path)),
                     caption=caption,
                     supports_streaming=True,
                 )
@@ -179,10 +232,13 @@ async def worker() -> None:
                 )
         finally:
             with suppress(Exception):
+                for p in generated_paths:
+                    if p.exists():
+                        p.unlink()
                 if result and result.file_path.exists():
                     result.file_path.unlink()
-                    if result.file_path.parent.exists():
-                        result.file_path.parent.rmdir()
+                if result and result.file_path.parent.exists():
+                    result.file_path.parent.rmdir()
 
 
 if __name__ == "__main__":
