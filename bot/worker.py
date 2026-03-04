@@ -120,6 +120,13 @@ async def worker() -> None:
     settings = get_settings()
     setup_json_logging(settings.log_level)
     await init_db()
+    video_delivery_mode = (settings.video_delivery_mode or "document").strip().lower()
+    if video_delivery_mode not in {"video", "document"}:
+        logger.warning(
+            "Unsupported VIDEO_DELIVERY_MODE '%s', falling back to 'document'",
+            settings.video_delivery_mode,
+        )
+        video_delivery_mode = "document"
 
     ffmpeg_bin = settings.ffmpeg_path or shutil.which("ffmpeg")
     if not ffmpeg_bin:
@@ -181,12 +188,19 @@ async def worker() -> None:
                 )
                 if video_path != result.file_path:
                     generated_paths.append(video_path)
-                await bot.send_video(
-                    chat_id=job.chat_id,
-                    video=FSInputFile(str(video_path)),
-                    caption=caption,
-                    supports_streaming=True,
-                )
+                if video_delivery_mode == "document":
+                    await bot.send_document(
+                        chat_id=job.chat_id,
+                        document=FSInputFile(str(video_path)),
+                        caption=caption,
+                    )
+                else:
+                    await bot.send_video(
+                        chat_id=job.chat_id,
+                        video=FSInputFile(str(video_path)),
+                        caption=caption,
+                        supports_streaming=True,
+                    )
             elif result.media_kind == "photo":
                 try:
                     await bot.send_photo(
