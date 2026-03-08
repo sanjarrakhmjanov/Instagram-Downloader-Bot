@@ -90,9 +90,9 @@ TEXTS = {
         ),
     },
     "queued": {
-        "uz": "⏳ Qabul qilindi. Navbat: #{position}",
-        "ru": "⏳ Принято. Очередь: #{position}",
-        "en": "⏳ Accepted. Queue: #{position}",
+        "uz": "⏳ So'rov qabul qilindi.",
+        "ru": "⏳ Запрос принят.",
+        "en": "⏳ Request accepted.",
     },
     "auto_processing": {
         "uz": "🖼 Instagram post aniqlandi. Format tanlashsiz avtomatik yuklab olinadi.",
@@ -105,9 +105,9 @@ TEXTS = {
         "en": "🕒 Downloading:\n{progress}",
     },
     "done": {
-        "uz": "✅ Tayyor.",
-        "ru": "✅ Готово.",
-        "en": "✅ Done.",
+        "uz": "✅ Yakunlandi. Fayl yuborildi.",
+        "ru": "✅ Завершено. Файл отправлен.",
+        "en": "✅ Completed. File sent.",
     },
     "completed_card": {
         "uz": "✅ Yuklab olindi\n🎬 Nomi: {title}\n🎵 Format: {fmt}",
@@ -278,9 +278,9 @@ TEXTS = {
         "en": "Saved to favorites.",
     },
     "favorite_button": {
-        "uz": "⭐ Sevimli",
-        "ru": "⭐ В избранное",
-        "en": "⭐ Favorite",
+        "uz": "⭐ Sevimlilarga saqlash",
+        "ru": "⭐ Сохранить в избранное",
+        "en": "⭐ Save to favorites",
     },
     "admin_only": {
         "uz": "⛔ Bu bo'lim faqat administratorlar uchun ochiq.",
