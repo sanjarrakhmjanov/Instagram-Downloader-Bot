@@ -1,4 +1,3 @@
-from html import escape
 from contextlib import suppress
 
 from aiogram import F, Router
@@ -11,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import Settings
 from bot.db.models import Download
-from bot.db.repo import DownloadRepository, FavoriteRepository, UserRepository
+from bot.db.repo import FavoriteRepository, UserRepository
 from bot.i18n import tr
-from bot.keyboards.common import language_keyboard, start_actions_keyboard
+from bot.keyboards.common import start_actions_keyboard
 from bot.services.queue import DownloadJob, QueueService
 from bot.states.download import DownloadFlow
 
@@ -144,61 +143,3 @@ async def cb_add_favorite(
     )
     await callback.answer(tr("saved_to_favorites", lang), show_alert=False)
 
-
-@router.callback_query(F.data.startswith("menu:"))
-async def cb_menu(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
-    if not callback.data or not callback.from_user or not callback.message:
-        return
-    action = callback.data.split(":")[-1]
-    repo = UserRepository(session)
-    lang = await repo.get_language(callback.from_user.id, settings.default_language)
-
-    if action == "download":
-        await callback.message.answer(tr("send_link_prompt", lang))
-    elif action == "help":
-        await callback.message.answer(tr("help_premium", lang))
-    elif action == "settings":
-        await callback.message.answer(tr("settings", lang), reply_markup=language_keyboard("settings"))
-    elif action == "history":
-        rows = await DownloadRepository(session).list_recent(callback.from_user.id)
-        if not rows:
-            await callback.message.answer(tr("history_empty", lang))
-        else:
-            lines = [tr("history_header", lang)]
-            for idx, row in enumerate(rows, 1):
-                lines.append(
-                    tr(
-                        "history_item",
-                        lang,
-                        idx=idx,
-                        title=escape(row.title),
-                        fmt=escape(row.selected_format.upper()),
-                    )
-                )
-            await callback.message.answer("\n\n".join(lines))
-    elif action == "favorites":
-        rows = await FavoriteRepository(session).list_recent(callback.from_user.id)
-        if not rows:
-            await callback.message.answer(tr("favorites_empty", lang))
-        else:
-            text = "\n".join(
-                f"{idx}. [{escape(row.platform)}] {escape(row.title)}\n{escape(row.url)}"
-                for idx, row in enumerate(rows, 1)
-            )
-            await callback.message.answer(text)
-    elif action == "admin":
-        if callback.from_user.id not in settings.admin_ids:
-            await callback.message.answer(tr("admin_only", lang))
-        else:
-            stats = await UserRepository(session).get_stats()
-            await callback.message.answer(
-                tr(
-                    "admin_stats_card",
-                    lang,
-                    users=stats["users"],
-                    downloads=stats["downloads"],
-                    favorites=stats["favorites"],
-                )
-            )
-
-    await callback.answer()
