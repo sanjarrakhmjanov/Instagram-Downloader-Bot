@@ -1,4 +1,9 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from bot.constants import DOWNLOAD_OPTIONS, SUPPORTED_LANGUAGES
 from bot.i18n import tr
@@ -49,21 +54,20 @@ def favorite_keyboard_localized(download_id: int, lang: str) -> InlineKeyboardMa
     )
 
 
-def start_actions_keyboard(lang: str, is_admin: bool = False) -> InlineKeyboardMarkup:
+def start_actions_keyboard(lang: str, is_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text=tr("menu_download", lang), callback_data="menu:download"),
-            InlineKeyboardButton(text=tr("menu_help", lang), callback_data="menu:help"),
+            KeyboardButton(text=tr("menu_download", lang)),
         ],
         [
-            InlineKeyboardButton(text=tr("menu_settings", lang), callback_data="menu:settings"),
-            InlineKeyboardButton(text=tr("menu_privacy", lang), callback_data="menu:privacy"),
+            KeyboardButton(text=tr("menu_help", lang)),
+            KeyboardButton(text=tr("menu_history", lang)),
         ],
         [
-            InlineKeyboardButton(text=tr("menu_history", lang), callback_data="menu:history"),
-            InlineKeyboardButton(text=tr("menu_favorites", lang), callback_data="menu:favorites"),
+            KeyboardButton(text=tr("menu_favorites", lang)),
+            KeyboardButton(text=tr("menu_settings", lang)),
         ],
     ]
     if is_admin:
-        rows.append([InlineKeyboardButton(text=tr("menu_admin", lang), callback_data="menu:admin")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+        rows.append([KeyboardButton(text=tr("menu_admin", lang))])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
