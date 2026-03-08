@@ -166,19 +166,40 @@ TEXTS = {
     },
     "start_choose_language": {
         "uz": (
-            "👋 Xush kelibsiz.\n\n"
-            "Bot interfeysi tilini tanlang.\n"
-            "Keyin asosiy menyu avtomatik ochiladi."
+            "🔥 Assalomu alaykum, @saveviathisbot ga xush kelibsiz!\n\n"
+            "Bu bot Instagram havolalaridan media yuklab beradi:\n"
+            "• Reels va video postlar\n"
+            "• Carousel postlar (bir nechta rasm)\n"
+            "• MP3 (audio extract)\n\n"
+            "Qanday ishlaydi:\n"
+            "1) Instagram havola yuboring\n"
+            "2) Video yoki MP3 tanlang\n"
+            "3) Bot tayyor faylni yuboradi\n\n"
+            "Davom etish uchun interfeys tilini tanlang."
         ),
         "ru": (
-            "👋 Добро пожаловать.\n\n"
-            "Выберите язык интерфейса бота.\n"
-            "После этого откроется главное меню."
+            "🔥 Добро пожаловать в @saveviathisbot!\n\n"
+            "Бот загружает медиа по ссылкам Instagram:\n"
+            "• Reels и видео-посты\n"
+            "• Карусель-посты (несколько фото)\n"
+            "• MP3 (извлечение аудио)\n\n"
+            "Как это работает:\n"
+            "1) Отправьте ссылку Instagram\n"
+            "2) Выберите Video или MP3\n"
+            "3) Получите готовый файл\n\n"
+            "Для продолжения выберите язык интерфейса."
         ),
         "en": (
-            "👋 Welcome.\n\n"
-            "Choose the bot interface language.\n"
-            "The main menu will open right after."
+            "🔥 Welcome to @saveviathisbot!\n\n"
+            "This bot downloads media from Instagram links:\n"
+            "• Reels and video posts\n"
+            "• Carousel posts (multiple photos)\n"
+            "• MP3 (audio extraction)\n\n"
+            "How it works:\n"
+            "1) Send an Instagram link\n"
+            "2) Choose Video or MP3\n"
+            "3) Receive the ready file\n\n"
+            "To continue, choose your interface language."
         ),
     },
     "start_language_hint": {
