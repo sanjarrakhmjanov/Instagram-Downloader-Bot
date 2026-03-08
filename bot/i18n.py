@@ -3,6 +3,7 @@ from bot.constants import SUPPORTED_LANGUAGES
 TEXTS = {
     "start": {
         "uz": (
+            "🚀 @saveviathisbot orqali Instagram video va MP3 ni tez yuklab oling!\n\n"
             "Instagram Downloader botiga xush kelibsiz.\n\n"
             "Qo'llab-quvvatlanadi:\n"
             "- Instagram Reels\n"
@@ -13,6 +14,7 @@ TEXTS = {
             "3) Faylni qabul qiling"
         ),
         "ru": (
+            "🚀 Быстро скачивайте Instagram видео и MP3 через @saveviathisbot!\n\n"
             "Добро пожаловать в Instagram Downloader.\n\n"
             "Поддерживается:\n"
             "- Instagram Reels\n"
@@ -23,6 +25,7 @@ TEXTS = {
             "3) Получите файл"
         ),
         "en": (
+            "🚀 Download Instagram videos and MP3 quickly via @saveviathisbot!\n\n"
             "Welcome to Instagram Downloader.\n\n"
             "Supported:\n"
             "- Instagram Reels\n"
@@ -32,6 +35,11 @@ TEXTS = {
             "2) Choose Video or MP3 (auto for image posts)\n"
             "3) Receive your file"
         ),
+    },
+    "promo_line": {
+        "uz": "🚀 @saveviathisbot orqali Instagram video va MP3 ni tez yuklab oling!",
+        "ru": "🚀 Быстро скачивайте Instagram видео и MP3 через @saveviathisbot!",
+        "en": "🚀 Download Instagram videos and MP3 quickly via @saveviathisbot!",
     },
     "help": {
         "uz": "Instagram havola yuboring. Video yoki MP3 tanlang. Post rasm bo'lsa avtomatik yuboriladi.",
@@ -82,9 +90,9 @@ TEXTS = {
         ),
     },
     "queued": {
-        "uz": "⏳ Navbatga qo'shildi. O'rin: #{position}",
-        "ru": "⏳ Добавлено в очередь. Позиция: #{position}",
-        "en": "⏳ Added to queue. Position: #{position}",
+        "uz": "⏳ Qabul qilindi. Navbat: #{position}",
+        "ru": "⏳ Принято. Очередь: #{position}",
+        "en": "⏳ Accepted. Queue: #{position}",
     },
     "auto_processing": {
         "uz": "🖼 Instagram post aniqlandi. Format tanlashsiz avtomatik yuklab olinadi.",
@@ -92,14 +100,14 @@ TEXTS = {
         "en": "🖼 Instagram post detected. Processing automatically without format selection.",
     },
     "processing": {
-        "uz": "Yuklab olinmoqda... {progress}",
-        "ru": "Идет загрузка... {progress}",
-        "en": "Downloading... {progress}",
+        "uz": "🕒 Yuklanmoqda:\n{progress}",
+        "ru": "🕒 Загрузка:\n{progress}",
+        "en": "🕒 Downloading:\n{progress}",
     },
     "done": {
-        "uz": "✅ Yakunlandi.",
+        "uz": "✅ Tayyor.",
         "ru": "✅ Готово.",
-        "en": "✅ Completed.",
+        "en": "✅ Done.",
     },
     "completed_card": {
         "uz": "✅ Yuklab olindi\n🎬 Nomi: {title}\n🎵 Format: {fmt}",

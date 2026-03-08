@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass
 
 from redis.asyncio import Redis
 
-from bot.constants import PENDING_REQUEST_KEY, QUEUE_KEY
+from bot.constants import ACTIVE_JOB_KEY, CANCEL_REQUEST_KEY, PENDING_REQUEST_KEY, QUEUE_KEY
 
 
 @dataclass
@@ -62,3 +62,21 @@ class QueueService:
         _, payload = row
         data = json.loads(payload)
         return DownloadJob(**data)
+
+    async def set_active_job(self, user_id: int, request_id: str, ttl_sec: int = 3600) -> None:
+        await self.redis.setex(ACTIVE_JOB_KEY.format(user_id=user_id), ttl_sec, request_id)
+
+    async def get_active_job(self, user_id: int) -> str | None:
+        return await self.redis.get(ACTIVE_JOB_KEY.format(user_id=user_id))
+
+    async def clear_active_job(self, user_id: int) -> None:
+        await self.redis.delete(ACTIVE_JOB_KEY.format(user_id=user_id))
+
+    async def request_cancel(self, request_id: str, ttl_sec: int = 3600) -> None:
+        await self.redis.setex(CANCEL_REQUEST_KEY.format(request_id=request_id), ttl_sec, "1")
+
+    async def is_cancel_requested(self, request_id: str) -> bool:
+        return bool(await self.redis.exists(CANCEL_REQUEST_KEY.format(request_id=request_id)))
+
+    async def clear_cancel_request(self, request_id: str) -> None:
+        await self.redis.delete(CANCEL_REQUEST_KEY.format(request_id=request_id))

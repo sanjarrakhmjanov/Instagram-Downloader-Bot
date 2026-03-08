@@ -4,12 +4,14 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import Settings
 from bot.db.repo import DownloadRepository, FavoriteRepository, UserRepository
 from bot.i18n import tr
 from bot.keyboards.common import language_keyboard, start_actions_keyboard
+from bot.services.queue import QueueService
 
 router = Router()
 
@@ -53,9 +55,25 @@ async def cmd_privacy(message: Message, session: AsyncSession, settings: Setting
 
 @router.message(Command("cancel"))
 async def cmd_cancel(
-    message: Message, session: AsyncSession, settings: Settings, state: FSMContext
+    message: Message,
+    session: AsyncSession,
+    settings: Settings,
+    state: FSMContext,
+    redis: Redis,
 ) -> None:
     lang = await _lang(message, session, settings)
+    queue = QueueService(redis)
+    data = await state.get_data()
+    request_id = data.get("request_id")
+    if isinstance(request_id, str) and request_id:
+        await queue.request_cancel(request_id)
+        await queue.delete_pending(request_id)
+
+    if message.from_user:
+        active_request_id = await queue.get_active_job(message.from_user.id)
+        if active_request_id:
+            await queue.request_cancel(active_request_id)
+
     await state.clear()
     await message.answer(tr("flow_cancelled", lang))
 

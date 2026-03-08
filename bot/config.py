@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     request_rate_window_sec: int = Field(default=60, alias="REQUEST_RATE_WINDOW_SEC")
     request_timeout_sec: int = Field(default=900, alias="REQUEST_TIMEOUT_SEC")
     max_file_size_mb: int = Field(default=49, alias="MAX_FILE_SIZE_MB")
-    video_delivery_mode: str = Field(default="document", alias="VIDEO_DELIVERY_MODE")
     welcome_animation_url: str | None = Field(default=None, alias="WELCOME_ANIMATION_URL")
     welcome_image_url: str | None = Field(default=None, alias="WELCOME_IMAGE_URL")
     welcome_photo_file_id: str | None = Field(default=None, alias="WELCOME_PHOTO_FILE_ID")

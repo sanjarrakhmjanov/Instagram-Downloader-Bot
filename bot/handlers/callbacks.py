@@ -87,6 +87,7 @@ async def cb_download(
         return
 
     if option == "cancel":
+        await queue.request_cancel(request_id)
         await queue.delete_pending(request_id)
         await state.clear()
         await callback.answer("Canceled", show_alert=False)

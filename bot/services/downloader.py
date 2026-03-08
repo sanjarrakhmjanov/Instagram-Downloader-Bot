@@ -252,6 +252,7 @@ class DownloaderService:
         url: str,
         option: str,
         progress_cb: Callable[[str], Any] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> DownloadResult:
         if option not in DOWNLOAD_OPTIONS:
             raise ValueError(f"Unsupported option: {option}")
@@ -261,6 +262,8 @@ class DownloaderService:
         progress = {"text": "0%"}
 
         def _hook(status: dict[str, Any]) -> None:
+            if cancel_check and cancel_check():
+                raise DownloadError("Cancelled by user")
             if status.get("status") == "downloading":
                 total = status.get("total_bytes") or status.get("total_bytes_estimate") or 0
                 downloaded = status.get("downloaded_bytes") or 0
@@ -303,12 +306,24 @@ class DownloaderService:
 
             last_error: Exception | None = None
             for fmt in format_attempts:
+                if cancel_check and cancel_check():
+                    raise DownloadError("Cancelled by user")
                 options = dict(base_options)
                 if fmt:
                     options["format"] = fmt
                 try:
                     with yt_dlp.YoutubeDL(options) as ydl:
                         info = ydl.extract_info(url, download=True)
+                        logger.info(
+                            "Download extracted",
+                            extra={
+                                "selected_format": fmt or "auto",
+                                "ext": info.get("ext"),
+                                "vcodec": info.get("vcodec"),
+                                "acodec": info.get("acodec"),
+                                "duration": info.get("duration"),
+                            },
+                        )
                         if option == "mp3":
                             prepared = ydl.prepare_filename(info)
                             return str(Path(prepared).with_suffix(".mp3")), info
