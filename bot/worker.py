@@ -4,9 +4,7 @@ import logging
 import shutil
 import subprocess
 from contextlib import suppress
-from html import escape
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -36,11 +34,6 @@ def _render_progress(progress_text: str) -> str:
     filled = pct // 10
     bar = "■" * filled + "□" * (10 - filled)
     return f"{bar} ~ {pct}%"
-
-
-def _display_url(raw_url: str) -> str:
-    parts = urlsplit(raw_url)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -> Path:
@@ -370,7 +363,6 @@ async def worker() -> None:
                 raise FileNotFoundError("Downloaded file not found")
             max_size_bytes = settings.max_file_size_mb * 1024 * 1024
 
-            caption = f"{escape(result.title)}\n{escape(_display_url(job.url))}"
             if result.media_kind == "audio":
                 if result.file_path.stat().st_size > max_size_bytes:
                     await bot.edit_message_text(
@@ -382,7 +374,6 @@ async def worker() -> None:
                 await bot.send_audio(
                     chat_id=job.chat_id,
                     audio=FSInputFile(str(result.file_path)),
-                    caption=caption,
                 )
             elif result.media_kind == "video":
                 promo_line = tr("promo_line", job.language)
@@ -452,7 +443,7 @@ async def worker() -> None:
                     await bot.send_video(
                         chat_id=job.chat_id,
                         video=FSInputFile(str(video_path)),
-                        caption=f"{caption}\n\n{promo_line}",
+                        caption=promo_line,
                         supports_streaming=True,
                         width=width,
                         height=height,
@@ -463,7 +454,7 @@ async def worker() -> None:
                     await bot.send_document(
                         chat_id=job.chat_id,
                         document=FSInputFile(str(video_path)),
-                        caption=f"{caption}\n\n{promo_line}",
+                        caption=promo_line,
                     )
                     logger.warning("Delivery fallback: send_document", extra={"request_id": job.request_id})
             elif result.media_kind == "photo":
@@ -471,20 +462,17 @@ async def worker() -> None:
                     await bot.send_photo(
                         chat_id=job.chat_id,
                         photo=FSInputFile(str(result.file_path)),
-                        caption=caption,
                     )
                 except TelegramBadRequest:
                     # Fallback for large/unusual image files.
                     await bot.send_document(
                         chat_id=job.chat_id,
                         document=FSInputFile(str(result.file_path)),
-                        caption=caption,
                     )
             else:
                 await bot.send_document(
                     chat_id=job.chat_id,
                     document=FSInputFile(str(result.file_path)),
-                    caption=caption,
                 )
 
             async with SessionLocal() as session:
