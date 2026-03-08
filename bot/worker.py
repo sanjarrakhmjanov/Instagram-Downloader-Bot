@@ -10,7 +10,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InputMediaPhoto
 from redis.asyncio import Redis
 
 from bot.config import get_settings
@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def _render_progress(progress_text: str) -> str:
+    import re
+
     clean = progress_text.strip().replace("%", "")
+    m = re.search(r"(\d+(?:\.\d+)?)", clean)
+    clean = m.group(1) if m else clean
     try:
         pct = max(0, min(100, int(float(clean))))
     except ValueError:
@@ -196,6 +200,17 @@ def _is_telegram_video_compatible(probe: dict | None) -> bool:
     )
 
 
+def _classify_by_ext(path: Path) -> str:
+    ext = path.suffix.lower()
+    if ext in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}:
+        return "photo"
+    if ext in {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}:
+        return "video"
+    if ext in {".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"}:
+        return "audio"
+    return "document"
+
+
 async def _remux_faststart(path: Path, ffmpeg_path: str | None) -> Path:
     if not ffmpeg_path:
         return path
@@ -328,14 +343,29 @@ async def worker() -> None:
         generated_paths: list[Path] = []
 
         cancel_requested = False
+        progress_target = 0.0
+        progress_visible = 0
 
         async def on_progress(progress_text: str) -> None:
-            with suppress(Exception):
-                await bot.edit_message_text(
-                    chat_id=job.chat_id,
-                    message_id=status_msg.message_id,
-                    text=tr("processing", job.language, progress=_render_progress(progress_text)),
-                )
+            import re
+
+            nonlocal progress_target
+            m = re.search(r"(\d+(?:\.\d+)?)", progress_text)
+            if m:
+                progress_target = max(progress_target, min(100.0, float(m.group(1))))
+
+        async def smooth_progress() -> None:
+            nonlocal progress_visible
+            while True:
+                await asyncio.sleep(0.25)
+                if progress_visible < int(progress_target):
+                    progress_visible += 1
+                    with suppress(Exception):
+                        await bot.edit_message_text(
+                            chat_id=job.chat_id,
+                            message_id=status_msg.message_id,
+                            text=tr("processing", job.language, progress=_render_progress(f"{progress_visible}%")),
+                        )
 
         async def watch_cancel() -> None:
             nonlocal cancel_requested
@@ -346,6 +376,7 @@ async def worker() -> None:
                     return
 
         cancel_task = asyncio.create_task(watch_cancel())
+        progress_task = asyncio.create_task(smooth_progress())
 
         def _cancel_check() -> bool:
             return cancel_requested
@@ -359,12 +390,13 @@ async def worker() -> None:
             )
             if cancel_requested:
                 raise asyncio.CancelledError("Cancelled by user")
-            if not result.file_path.exists():
+            if not result.file_paths or not result.file_paths[0].exists():
                 raise FileNotFoundError("Downloaded file not found")
             max_size_bytes = settings.max_file_size_mb * 1024 * 1024
 
             if result.media_kind == "audio":
-                if result.file_path.stat().st_size > max_size_bytes:
+                audio_path = result.file_paths[0]
+                if audio_path.stat().st_size > max_size_bytes:
                     await bot.edit_message_text(
                         chat_id=job.chat_id,
                         message_id=status_msg.message_id,
@@ -373,22 +405,23 @@ async def worker() -> None:
                     continue
                 await bot.send_audio(
                     chat_id=job.chat_id,
-                    audio=FSInputFile(str(result.file_path)),
+                    audio=FSInputFile(str(audio_path)),
                 )
             elif result.media_kind == "video":
+                source_path = result.file_paths[0]
                 promo_line = tr("promo_line", job.language)
-                probe_before = _probe_media(result.file_path, ffprobe_bin)
+                probe_before = _probe_media(source_path, ffprobe_bin)
                 logger.info(
                     "Video probe before processing",
                     extra={
                         "request_id": job.request_id,
-                        "file": str(result.file_path),
-                        "size_bytes": result.file_path.stat().st_size,
+                        "file": str(source_path),
+                        "size_bytes": source_path.stat().st_size,
                         "probe_ok": bool(probe_before),
                     },
                 )
 
-                video_path = result.file_path
+                video_path = source_path
                 if _is_telegram_video_compatible(probe_before):
                     remuxed = await _remux_faststart(video_path, ffmpeg_bin)
                     if remuxed != video_path:
@@ -458,21 +491,25 @@ async def worker() -> None:
                     )
                     logger.warning("Delivery fallback: send_document", extra={"request_id": job.request_id})
             elif result.media_kind == "photo":
-                try:
-                    await bot.send_photo(
-                        chat_id=job.chat_id,
-                        photo=FSInputFile(str(result.file_path)),
-                    )
-                except TelegramBadRequest:
-                    # Fallback for large/unusual image files.
-                    await bot.send_document(
-                        chat_id=job.chat_id,
-                        document=FSInputFile(str(result.file_path)),
-                    )
+                photo_paths = [p for p in result.file_paths if _classify_by_ext(p) == "photo" and p.exists()]
+                if not photo_paths:
+                    photo_paths = [result.file_paths[0]]
+                chunks: list[list[Path]] = [photo_paths[i : i + 10] for i in range(0, len(photo_paths), 10)]
+                for chunk in chunks:
+                    try:
+                        media = [InputMediaPhoto(media=FSInputFile(str(p))) for p in chunk]
+                        await bot.send_media_group(chat_id=job.chat_id, media=media)
+                    except TelegramBadRequest:
+                        for p in chunk:
+                            await bot.send_photo(
+                                chat_id=job.chat_id,
+                                photo=FSInputFile(str(p)),
+                            )
             else:
+                doc_path = result.file_paths[0]
                 await bot.send_document(
                     chat_id=job.chat_id,
-                    document=FSInputFile(str(result.file_path)),
+                    document=FSInputFile(str(doc_path)),
                 )
 
             async with SessionLocal() as session:
@@ -507,15 +544,18 @@ async def worker() -> None:
                 logger.exception("Download job failed", extra={"request_id": job.request_id, "url": job.url})
             if "there is no video in this post" in msg:
                 fail_key = "source_unavailable"
-            elif "instagram" in msg and ("login required" in msg or "restricted" in msg or "private" in msg):
+            elif "instagram" in msg and (
+                "login required" in msg
+                or "restricted" in msg
+                or "private" in msg
+                or "challenge_required" in msg
+                or "not authorized" in msg
+            ):
                 fail_key = "instagram_restricted"
             elif "no downloadable file was created" in msg:
                 fail_key = "source_unavailable"
             elif "not found" in msg or "404" in msg or "unavailable" in msg:
                 fail_key = "source_unavailable"
-            elif job.platform == "instagram":
-                # Instagram often returns generic extraction errors for restricted posts.
-                fail_key = "instagram_restricted"
             with suppress(Exception):
                 await bot.edit_message_text(
                     chat_id=job.chat_id,
@@ -527,13 +567,20 @@ async def worker() -> None:
                 cancel_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await cancel_task
+                progress_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await progress_task
                 for p in generated_paths:
                     if p.exists():
                         p.unlink()
-                if result and result.file_path.exists():
-                    result.file_path.unlink()
-                if result and result.file_path.parent.exists():
-                    result.file_path.parent.rmdir()
+                if result:
+                    for p in result.file_paths:
+                        if p.exists():
+                            p.unlink()
+                    for d in {p.parent for p in result.file_paths}:
+                        with suppress(Exception):
+                            if d.exists():
+                                d.rmdir()
                 await queue.clear_cancel_request(job.request_id)
                 await queue.clear_active_job(job.user_id)
 

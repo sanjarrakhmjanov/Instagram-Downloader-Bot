@@ -89,25 +89,22 @@ async def handle_link(
 
     # Instagram image posts usually don't need a format selector.
     if platform == "instagram" and not metadata.duration_sec:
-        position = max(
-            1,
-            await queue.enqueue(
-                DownloadJob(
-                    request_id=request_id,
-                    user_id=message.from_user.id,
-                    chat_id=message.chat.id,
-                    url=metadata.webpage_url,
-                    platform=platform,
-                    title=metadata.title,
-                    duration_sec=metadata.duration_sec,
-                    option="video",
-                    language=lang,
-                )
-            ),
+        await queue.enqueue(
+            DownloadJob(
+                request_id=request_id,
+                user_id=message.from_user.id,
+                chat_id=message.chat.id,
+                url=metadata.webpage_url,
+                platform=platform,
+                title=metadata.title,
+                duration_sec=metadata.duration_sec,
+                option="video",
+                language=lang,
+            )
         )
         await queue.delete_pending(request_id)
         await state.clear()
-        auto_text = f"{tr('auto_processing', lang)}\n{tr('queued', lang, position=position)}"
+        auto_text = tr("auto_processing", lang)
         try:
             await progress_msg.edit_text(auto_text)
         except TelegramNetworkError:

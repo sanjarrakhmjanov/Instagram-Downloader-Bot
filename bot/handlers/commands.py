@@ -1,6 +1,7 @@
 from html import escape
 
 from aiogram import F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -23,6 +24,18 @@ async def _lang(message: Message, session: AsyncSession, settings: Settings) -> 
     return await repo.get_language(message.from_user.id, settings.default_language)
 
 
+def _menu_texts() -> dict[str, set[str]]:
+    langs = ("uz", "ru", "en")
+    return {
+        "download": {tr("menu_download", l) for l in langs},
+        "help": {tr("menu_help", l) for l in langs},
+        "settings": {tr("menu_settings", l) for l in langs},
+        "history": {tr("menu_history", l) for l in langs},
+        "favorites": {tr("menu_favorites", l) for l in langs},
+        "admin": {tr("menu_admin", l) for l in langs},
+    }
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, session: AsyncSession, settings: Settings) -> None:
     if not message.from_user:
@@ -38,19 +51,13 @@ async def cmd_start(message: Message, session: AsyncSession, settings: Settings)
 @router.message(Command("help"))
 async def cmd_help(message: Message, session: AsyncSession, settings: Settings) -> None:
     lang = await _lang(message, session, settings)
-    await message.answer(tr("help", lang))
+    await message.answer(tr("help_premium", lang))
 
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, session: AsyncSession, settings: Settings) -> None:
     lang = await _lang(message, session, settings)
     await message.answer(tr("settings", lang), reply_markup=language_keyboard("settings"))
-
-
-@router.message(Command("privacy"))
-async def cmd_privacy(message: Message, session: AsyncSession, settings: Settings) -> None:
-    lang = await _lang(message, session, settings)
-    await message.answer(tr("privacy", lang))
 
 
 @router.message(Command("cancel"))
@@ -88,11 +95,18 @@ async def cmd_history(message: Message, session: AsyncSession, settings: Setting
     if not rows:
         await message.answer(tr("history_empty", lang))
         return
-    text = "\n".join(
-        f"{idx}. [{escape(row.platform)}] {escape(row.title)} ({escape(row.selected_format)})"
-        for idx, row in enumerate(rows, 1)
-    )
-    await message.answer(text)
+    lines = [tr("history_header", lang)]
+    for idx, row in enumerate(rows, 1):
+        lines.append(
+            tr(
+                "history_item",
+                lang,
+                idx=idx,
+                title=escape(row.title),
+                fmt=escape(row.selected_format.upper()),
+            )
+        )
+    await message.answer("\n\n".join(lines))
 
 
 @router.message(Command("favorites"))
@@ -132,6 +146,31 @@ async def cmd_admin(message: Message, session: AsyncSession, settings: Settings)
             favorites=stats["favorites"],
         )
     )
+
+
+@router.message(F.text)
+async def menu_button_handler(message: Message, session: AsyncSession, settings: Settings) -> None:
+    if not message.text or not message.from_user:
+        return
+
+    labels = _menu_texts()
+    text = message.text.strip()
+    lang = await _lang(message, session, settings)
+
+    if text in labels["download"]:
+        await message.answer(tr("send_link_prompt", lang))
+    elif text in labels["help"]:
+        await cmd_help(message, session, settings)
+    elif text in labels["settings"]:
+        await cmd_settings(message, session, settings)
+    elif text in labels["history"]:
+        await cmd_history(message, session, settings)
+    elif text in labels["favorites"]:
+        await cmd_favorites(message, session, settings)
+    elif text in labels["admin"]:
+        await cmd_admin(message, session, settings)
+    else:
+        raise SkipHandler()
 
 
 @router.message(F.text.startswith("/"))

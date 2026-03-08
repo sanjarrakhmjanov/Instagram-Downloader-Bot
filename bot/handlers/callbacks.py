@@ -1,4 +1,5 @@
 from html import escape
+from contextlib import suppress
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramNetworkError
@@ -44,22 +45,27 @@ async def cb_set_language(
                 await callback.message.answer_photo(
                     settings.welcome_photo_file_id,
                     caption=tr("start", lang),
+                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             elif settings.welcome_image_url:
                 await callback.message.answer_photo(
                     settings.welcome_image_url,
                     caption=tr("start", lang),
+                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             elif settings.welcome_animation_url:
                 await callback.message.answer_animation(
                     settings.welcome_animation_url,
                     caption=tr("start", lang),
+                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             else:
-                await callback.message.answer(tr("start", lang))
+                await callback.message.answer(
+                    tr("start", lang),
+                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
+                )
             await callback.message.answer(
-                tr("start_quick_actions", lang),
-                reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
+                tr("send_link_prompt", lang),
             )
 
 
@@ -106,14 +112,12 @@ async def cb_download(
         option=option,
         language=pending.language,
     )
-    position = max(1, await queue.enqueue(job))
+    await queue.enqueue(job)
     await queue.delete_pending(request_id)
     await state.clear()
     if callback.message:
-        try:
-            await callback.message.edit_text(tr("queued", pending.language, position=position))
-        except TelegramNetworkError:
-            await callback.message.answer(tr("queued", pending.language, position=position))
+        with suppress(Exception):
+            await callback.message.delete()
     await callback.answer()
 
 
@@ -152,21 +156,26 @@ async def cb_menu(callback: CallbackQuery, session: AsyncSession, settings: Sett
     if action == "download":
         await callback.message.answer(tr("send_link_prompt", lang))
     elif action == "help":
-        await callback.message.answer(tr("help", lang))
+        await callback.message.answer(tr("help_premium", lang))
     elif action == "settings":
         await callback.message.answer(tr("settings", lang), reply_markup=language_keyboard("settings"))
-    elif action == "privacy":
-        await callback.message.answer(tr("privacy", lang))
     elif action == "history":
         rows = await DownloadRepository(session).list_recent(callback.from_user.id)
         if not rows:
             await callback.message.answer(tr("history_empty", lang))
         else:
-            text = "\n".join(
-                f"{idx}. [{escape(row.platform)}] {escape(row.title)} ({escape(row.selected_format)})"
-                for idx, row in enumerate(rows, 1)
-            )
-            await callback.message.answer(text)
+            lines = [tr("history_header", lang)]
+            for idx, row in enumerate(rows, 1):
+                lines.append(
+                    tr(
+                        "history_item",
+                        lang,
+                        idx=idx,
+                        title=escape(row.title),
+                        fmt=escape(row.selected_format.upper()),
+                    )
+                )
+            await callback.message.answer("\n\n".join(lines))
     elif action == "favorites":
         rows = await FavoriteRepository(session).list_recent(callback.from_user.id)
         if not rows:

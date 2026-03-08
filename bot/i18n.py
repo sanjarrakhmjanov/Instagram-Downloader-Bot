@@ -42,9 +42,44 @@ TEXTS = {
         "en": "🚀 Download Instagram videos and MP3 quickly via @saveviathisbot!",
     },
     "help": {
-        "uz": "Instagram havola yuboring. Video yoki MP3 tanlang. Post rasm bo'lsa avtomatik yuboriladi.",
-        "ru": "Отправьте ссылку Instagram. Выберите Video или MP3. Фото-пост отправляется автоматически.",
-        "en": "Send an Instagram link. Choose Video or MP3. Image posts are sent automatically.",
+        "uz": "Instagram havola yuboring. Video yoki MP3 tanlang.",
+        "ru": "Отправьте ссылку Instagram. Выберите Video или MP3.",
+        "en": "Send an Instagram link. Choose Video or MP3.",
+    },
+    "help_premium": {
+        "uz": (
+            "📘 Premium qo'llanma\n\n"
+            "1) Instagram link yuboring\n"
+            "2) Kerakli formatni tanlang:\n"
+            "• VIDEO — mobilga mos formatda\n"
+            "• MP3 — toza audio\n"
+            "3) Tayyor faylni qabul qiling\n\n"
+            "💡 Eslatma:\n"
+            "• Carousel postlarda barcha rasmlar yuboriladi\n"
+            "• /cancel bilan jarayonni to'xtatish mumkin"
+        ),
+        "ru": (
+            "📘 Premium инструкция\n\n"
+            "1) Отправьте ссылку Instagram\n"
+            "2) Выберите формат:\n"
+            "• VIDEO — мобильный совместимый формат\n"
+            "• MP3 — чистое аудио\n"
+            "3) Получите готовый файл\n\n"
+            "💡 Примечание:\n"
+            "• Для карусели отправляются все фото\n"
+            "• /cancel останавливает процесс"
+        ),
+        "en": (
+            "📘 Premium guide\n\n"
+            "1) Send an Instagram link\n"
+            "2) Choose format:\n"
+            "• VIDEO — mobile-compatible output\n"
+            "• MP3 — clean audio extraction\n"
+            "3) Receive the ready file\n\n"
+            "💡 Notes:\n"
+            "• Carousel posts send all photos\n"
+            "• /cancel stops the current process"
+        ),
     },
     "unsupported_platform": {
         "uz": "Faqat Instagram linklari qo'llab-quvvatlanadi.",
@@ -237,11 +272,6 @@ TEXTS = {
         "ru": "⭐ Избранное",
         "en": "⭐ Favorites",
     },
-    "menu_privacy": {
-        "uz": "🔒 Maxfiylik",
-        "ru": "🔒 Приватность",
-        "en": "🔒 Privacy",
-    },
     "menu_admin": {
         "uz": "🛠 Admin",
         "ru": "🛠 Админ",
@@ -257,10 +287,15 @@ TEXTS = {
         "ru": "Язык обновлен.",
         "en": "Language updated.",
     },
-    "privacy": {
-        "uz": "Biz faqat xizmat uchun zarur bo'lgan ma'lumotlarni saqlaymiz.",
-        "ru": "Мы храним только данные, необходимые для работы сервиса.",
-        "en": "We only store data required to provide the service.",
+    "history_header": {
+        "uz": "🕓 Premium tarix",
+        "ru": "🕓 Premium история",
+        "en": "🕓 Premium history",
+    },
+    "history_item": {
+        "uz": "#{idx} • {title}\n🎵 Format: {fmt}",
+        "ru": "#{idx} • {title}\n🎵 Формат: {fmt}",
+        "en": "#{idx} • {title}\n🎵 Format: {fmt}",
     },
     "history_empty": {
         "uz": "Tarix bo'sh.",

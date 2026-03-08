@@ -58,7 +58,7 @@ class MediaMetadata:
 
 @dataclass
 class DownloadResult:
-    file_path: Path
+    file_paths: list[Path]
     title: str
     duration_sec: int | None
     option: str
@@ -90,17 +90,24 @@ class DownloaderService:
         return "document"
 
     @staticmethod
-    def _find_requested_filepath(info: dict[str, Any]) -> Path | None:
+    def _find_requested_filepaths(info: dict[str, Any]) -> list[Path]:
+        found: list[Path] = []
+
+        def _append_if_exists(fp: str | None) -> None:
+            if not fp:
+                return
+            p = Path(fp)
+            if p.exists() and p not in found:
+                found.append(p)
+
         for item in info.get("requested_downloads") or []:
-            fp = item.get("filepath") or item.get("_filename")
-            if fp and Path(fp).exists():
-                return Path(fp)
+            _append_if_exists(item.get("filepath") or item.get("_filename"))
         for entry in info.get("entries") or []:
             for item in entry.get("requested_downloads") or []:
-                fp = item.get("filepath") or item.get("_filename")
-                if fp and Path(fp).exists():
-                    return Path(fp)
-        return None
+                _append_if_exists(item.get("filepath") or item.get("_filename"))
+            _append_if_exists(entry.get("_filename"))
+        _append_if_exists(info.get("_filename"))
+        return found
 
     @staticmethod
     def _extract_direct_media_url(info: dict[str, Any]) -> tuple[str, str, str] | None:
@@ -267,13 +274,21 @@ class DownloaderService:
             if status.get("status") == "downloading":
                 total = status.get("total_bytes") or status.get("total_bytes_estimate") or 0
                 downloaded = status.get("downloaded_bytes") or 0
-                progress["text"] = f"{int(downloaded * 100 / total)}%" if total else status.get("_percent_str", "...")
+                if total:
+                    pct = int(downloaded * 100 / total)
+                    progress["text"] = f"{max(0, min(100, pct))}%"
+                else:
+                    raw = str(status.get("_percent_str", "")).strip()
+                    m = re.search(r"(\d+(?:\.\d+)?)", raw)
+                    progress["text"] = f"{m.group(1)}%" if m else progress["text"]
 
-        def _download() -> tuple[str, dict[str, Any]]:
+        def _download() -> tuple[list[str], dict[str, Any]]:
+            is_instagram_post = "instagram.com/p/" in url.lower()
             outtmpl = str(download_dir / "%(title).100B.%(ext)s")
             base_options: dict[str, Any] = {
                 "outtmpl": outtmpl,
-                "noplaylist": True,
+                # Keep full carousel extraction for Instagram posts.
+                "noplaylist": not is_instagram_post,
                 "quiet": True,
                 "progress_hooks": [_hook],
                 "noprogress": True,
@@ -326,16 +341,16 @@ class DownloaderService:
                         )
                         if option == "mp3":
                             prepared = ydl.prepare_filename(info)
-                            return str(Path(prepared).with_suffix(".mp3")), info
-                        requested_path = self._find_requested_filepath(info)
-                        if requested_path:
-                            return str(requested_path), info
+                            return [str(Path(prepared).with_suffix(".mp3"))], info
+                        requested_paths = self._find_requested_filepaths(info)
+                        if requested_paths:
+                            return [str(p) for p in requested_paths], info
                         prepared = ydl.prepare_filename(info)
                         if Path(prepared).exists():
-                            return prepared, info
+                            return [prepared], info
                         direct_asset = self._download_direct_media_asset(info, download_dir)
                         if direct_asset:
-                            return str(direct_asset), info
+                            return [str(direct_asset)], info
                         raise DownloadError("Extractor returned metadata but no downloadable file was created")
                 except DownloadError as exc:
                     last_error = exc
@@ -356,7 +371,7 @@ class DownloaderService:
             if not fallback_asset:
                 fallback_asset = self._fallback_instagram_oembed_asset(url, download_dir)
             if fallback_asset:
-                return str(fallback_asset), {"title": "Instagram media", "duration": None}
+                return [str(fallback_asset)], {"title": "Instagram media", "duration": None}
             raise last_error or RuntimeError("Failed to download media")
 
         async def _progress_updater() -> None:
@@ -364,32 +379,37 @@ class DownloaderService:
                 return
             last = None
             while True:
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.3)
                 if progress["text"] != last:
                     last = progress["text"]
                     await progress_cb(last)
 
         progress_task = asyncio.create_task(_progress_updater())
         try:
-            file_path, info = await asyncio.wait_for(asyncio.to_thread(_download), timeout=self.timeout_sec)
+            file_paths, info = await asyncio.wait_for(asyncio.to_thread(_download), timeout=self.timeout_sec)
         finally:
             progress_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await progress_task
 
-        result_path = Path(file_path)
-        if not result_path.exists():
+        if progress_cb:
+            await progress_cb("100%")
+
+        resolved_paths: list[Path] = [Path(p) for p in file_paths if Path(p).exists()]
+        if not resolved_paths:
             for root, _, files in os.walk(download_dir):
-                if files:
-                    result_path = Path(root) / files[0]
-                    break
+                for name in sorted(files):
+                    resolved_paths.append(Path(root) / name)
+        if not resolved_paths:
+            raise FileNotFoundError("Downloaded file not found")
 
         duration = info.get("duration")
         duration_int = int(duration) if isinstance(duration, (int, float)) else None
+        primary = resolved_paths[0]
         return DownloadResult(
-            file_path=result_path,
+            file_paths=resolved_paths,
             title=info.get("title") or "Untitled",
             duration_sec=duration_int,
             option=option,
-            media_kind=self._classify_media(result_path, option),
+            media_kind=self._classify_media(primary, option),
         )
