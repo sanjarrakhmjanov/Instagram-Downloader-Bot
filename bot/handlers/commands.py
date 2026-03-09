@@ -23,6 +23,18 @@ async def _lang(message: Message, session: AsyncSession, settings: Settings) -> 
     return await repo.get_language(message.from_user.id, settings.default_language)
 
 
+async def _send_start_landing(message: Message, settings: Settings, lang: str) -> None:
+    text = tr("start", lang)
+    if settings.welcome_photo_file_id:
+        await message.answer_photo(settings.welcome_photo_file_id, caption=text)
+    elif settings.welcome_image_url:
+        await message.answer_photo(settings.welcome_image_url, caption=text)
+    elif settings.welcome_animation_url:
+        await message.answer_animation(settings.welcome_animation_url, caption=text)
+    else:
+        await message.answer(text)
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, session: AsyncSession, settings: Settings) -> None:
     if not message.from_user:
@@ -30,7 +42,7 @@ async def cmd_start(message: Message, session: AsyncSession, settings: Settings)
     user_repo = UserRepository(session)
     await user_repo.get_or_create(message.from_user.id, settings.default_language)
     lang = await _lang(message, session, settings)
-    await message.answer(tr("start", lang))
+    await _send_start_landing(message, settings, lang)
 
 
 @router.message(Command("help"))
