@@ -3,7 +3,9 @@ from html import escape
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
+from aiogram.types import ReplyKeyboardRemove
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,14 +27,39 @@ async def _lang(message: Message, session: AsyncSession, settings: Settings) -> 
 
 async def _send_start_landing(message: Message, settings: Settings, lang: str) -> None:
     text = tr("start", lang)
+    remove_kb = ReplyKeyboardRemove()
     if settings.welcome_photo_file_id:
-        await message.answer_photo(settings.welcome_photo_file_id, caption=text)
-    elif settings.welcome_image_url:
-        await message.answer_photo(settings.welcome_image_url, caption=text)
-    elif settings.welcome_animation_url:
-        await message.answer_animation(settings.welcome_animation_url, caption=text)
-    else:
-        await message.answer(text)
+        try:
+            await message.answer_photo(
+                settings.welcome_photo_file_id,
+                caption=text,
+                reply_markup=remove_kb,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+    if settings.welcome_image_url:
+        try:
+            await message.answer_photo(
+                settings.welcome_image_url,
+                caption=text,
+                reply_markup=remove_kb,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+    if settings.welcome_animation_url:
+        try:
+            await message.answer_animation(
+                settings.welcome_animation_url,
+                caption=text,
+                reply_markup=remove_kb,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+
+    await message.answer(text, reply_markup=remove_kb)
 
 
 @router.message(Command("start"))

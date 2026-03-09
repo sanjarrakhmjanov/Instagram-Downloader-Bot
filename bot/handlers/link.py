@@ -16,7 +16,7 @@ from bot.i18n import tr
 from bot.keyboards.common import format_keyboard
 from bot.services.downloader import DownloaderService
 from bot.services.platforms import detect_platform, normalize_url
-from bot.services.queue import DownloadJob, PendingRequest, QueueService
+from bot.services.queue import PendingRequest, QueueService
 from bot.states.download import DownloadFlow
 
 router = Router()
@@ -86,30 +86,6 @@ async def handle_link(
         ),
         ttl_sec=settings.request_timeout_sec,
     )
-
-    # Instagram image posts usually don't need a format selector.
-    if platform == "instagram" and not metadata.duration_sec:
-        await queue.enqueue(
-            DownloadJob(
-                request_id=request_id,
-                user_id=message.from_user.id,
-                chat_id=message.chat.id,
-                url=metadata.webpage_url,
-                platform=platform,
-                title=metadata.title,
-                duration_sec=metadata.duration_sec,
-                option="video",
-                language=lang,
-            )
-        )
-        await queue.delete_pending(request_id)
-        await state.clear()
-        auto_text = tr("auto_processing", lang)
-        try:
-            await progress_msg.edit_text(auto_text)
-        except TelegramNetworkError:
-            await message.answer(auto_text)
-        return
 
     await state.set_state(DownloadFlow.awaiting_format)
     await state.update_data(request_id=request_id)
