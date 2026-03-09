@@ -306,9 +306,9 @@ TEXTS = {
         "en": "History is empty.",
     },
     "favorites_empty": {
-        "uz": "Sevimlilar bo'sh.",
-        "ru": "Избранное пусто.",
-        "en": "Favorites are empty.",
+        "uz": "⭐ Sevimlilar bo'sh.\n\nInstagram link yuborib, tayyor fayldan keyin «Sevimlilarga saqlash» tugmasini bosing.",
+        "ru": "⭐ Избранное пусто.\n\nОтправьте Instagram ссылку и после результата нажмите «Сохранить в избранное».",
+        "en": "⭐ Favorites are empty.\n\nSend an Instagram link and tap “Save to favorites” after download.",
     },
     "saved_to_favorites": {
         "uz": "Sevimlilarga saqlandi.",
@@ -319,6 +319,16 @@ TEXTS = {
         "uz": "⭐ Sevimlilarga saqlash",
         "ru": "⭐ Сохранить в избранное",
         "en": "⭐ Save to favorites",
+    },
+    "favorites_header": {
+        "uz": "⭐ Premium Sevimlilar",
+        "ru": "⭐ Premium Избранное",
+        "en": "⭐ Premium Favorites",
+    },
+    "favorites_item": {
+        "uz": "#{idx} • <b>{title}</b>\n🌐 {url}",
+        "ru": "#{idx} • <b>{title}</b>\n🌐 {url}",
+        "en": "#{idx} • <b>{title}</b>\n🌐 {url}",
     },
     "admin_only": {
         "uz": "⛔ Bu bo'lim faqat administratorlar uchun ochiq.",

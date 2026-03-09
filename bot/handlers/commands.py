@@ -116,11 +116,18 @@ async def cmd_favorites(message: Message, session: AsyncSession, settings: Setti
     if not rows:
         await message.answer(tr("favorites_empty", lang))
         return
-    text = "\n".join(
-        f"{idx}. [{escape(row.platform)}] {escape(row.title)}\n{escape(row.url)}"
-        for idx, row in enumerate(rows, 1)
-    )
-    await message.answer(text)
+    lines = [tr("favorites_header", lang)]
+    for idx, row in enumerate(rows, 1):
+        lines.append(
+            tr(
+                "favorites_item",
+                lang,
+                idx=idx,
+                title=escape(row.title),
+                url=escape(row.url),
+            )
+        )
+    await message.answer("\n\n".join(lines))
 
 
 @router.message(Command("admin"))
