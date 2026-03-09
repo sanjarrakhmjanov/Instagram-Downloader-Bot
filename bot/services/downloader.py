@@ -228,6 +228,8 @@ class DownloaderService:
     def _is_probable_instagram_media_url(url: str) -> bool:
         lower = url.lower()
         # Keep only probable Instagram CDN media URLs, skip generic page assets/icons/badges.
+        if any(token in lower for token in ["appstore", "google-play", "googleplay", "microsoft", "badge", "sprite"]):
+            return False
         return (
             (".cdninstagram.com" in lower or ".fbcdn.net" in lower or "scontent" in lower)
             and any(ext in lower for ext in [".jpg", ".jpeg", ".png", ".webp"])
@@ -266,7 +268,8 @@ class DownloaderService:
                 urllib.request.urlretrieve(url, target)
             except Exception:
                 continue
-            if target.exists() and target.stat().st_size > 0:
+            # Filter out tiny UI assets/icons; keep real media frames/photos.
+            if target.exists() and target.stat().st_size >= 40 * 1024:
                 paths.append(target)
         return paths
 
@@ -442,7 +445,25 @@ class DownloaderService:
                         if option == "mp3":
                             prepared = ydl.prepare_filename(info)
                             return [str(Path(prepared).with_suffix(".mp3"))], info
+
+                        entry_count = len([e for e in (info.get("entries") or []) if isinstance(e, dict)])
                         requested_paths = self._find_requested_filepaths(info)
+                        if is_instagram_post and entry_count > 1:
+                            # For carousel posts, extractor may materialize only the first item to disk.
+                            # Backfill remaining media from entry URLs and return all unique files.
+                            direct_assets = self._download_direct_media_assets(info, download_dir)
+                            merged: list[Path] = []
+                            seen: set[str] = set()
+                            for p in [*requested_paths, *direct_assets]:
+                                ps = str(p.resolve()) if p.exists() else str(p)
+                                if ps in seen:
+                                    continue
+                                seen.add(ps)
+                                if p.exists() and p.stat().st_size > 0:
+                                    merged.append(p)
+                            if len(merged) > 1:
+                                return [str(p) for p in merged], info
+
                         if requested_paths:
                             return [str(p) for p in requested_paths], info
                         prepared = ydl.prepare_filename(info)

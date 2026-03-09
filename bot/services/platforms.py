@@ -16,6 +16,13 @@ def normalize_url(url: str) -> str:
     if platform == "instagram":
         # Drop tracking/share params that often break extraction stability.
         query = []
+        path_parts = [p for p in parsed.path.split("/") if p]
+        if len(path_parts) >= 2 and path_parts[0] in {"p", "reel", "tv"}:
+            clean_path = f"/{path_parts[0]}/{path_parts[1]}"
+        else:
+            clean_path = parsed.path.rstrip("/") or parsed.path
+        new_query = ""
+        return urlunparse((parsed.scheme, parsed.netloc, clean_path, "", new_query, ""))
 
     clean_path = parsed.path.rstrip("/") or parsed.path
     new_query = urlencode(query, doseq=True)
