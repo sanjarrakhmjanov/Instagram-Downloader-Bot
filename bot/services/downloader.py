@@ -244,6 +244,12 @@ class DownloaderService:
                 if url.startswith("http"):
                     found.setdefault(url, None)
 
+        # Last-resort broad capture for escaped CDN image URLs in inline JSON payloads.
+        for m in re.finditer(r"https:\\/\\/[^\"']+?\.(?:jpg|jpeg|png|webp)[^\"']*", html_text, flags=re.IGNORECASE):
+            url = self._decode_escaped_url(m.group(0))
+            if url.startswith("http"):
+                found.setdefault(url, None)
+
         paths: list[Path] = []
         for idx, url in enumerate(found.keys(), 1):
             ext = ".jpg"
@@ -450,6 +456,16 @@ class DownloaderService:
                     if "there is no video in this post" in err:
                         # Common for Instagram image posts; let OG-image fallback handle it.
                         logger.warning("Instagram post has no video, trying image fallback")
+                        continue
+                    if (
+                        "login required" in err
+                        or "private" in err
+                        or "restricted" in err
+                        or "challenge_required" in err
+                        or "not authorized" in err
+                    ):
+                        # Allow HTML/OG fallback chain for public links even when extractor is blocked.
+                        logger.warning("Extractor access restricted, trying fallback chain")
                         continue
                     raise
 

@@ -87,7 +87,9 @@ async def handle_link(
         ttl_sec=settings.request_timeout_sec,
     )
 
-    path = urlparse(metadata.webpage_url).path.lower().lstrip("/")
+    # Use the original normalized URL for routing decisions.
+    # Metadata URL may be altered/fallback and can lose post/reel semantics.
+    path = urlparse(url).path.lower().lstrip("/")
     is_instagram_post = path.startswith("p/")
     is_instagram_reel = path.startswith("reel/")
 

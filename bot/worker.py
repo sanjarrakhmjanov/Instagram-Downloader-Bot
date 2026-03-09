@@ -423,17 +423,19 @@ async def worker() -> None:
                     },
                 )
 
+                # Always normalize Instagram video to a strict mobile-safe profile.
+                # This avoids edge cases where Telegram mobile decoders freeze video with audio still playing.
                 video_path = source_path
-                if _is_telegram_video_compatible(probe_before):
+                converted = await _ensure_mobile_compatible_video(video_path, ffmpeg_bin)
+                if converted != video_path:
+                    generated_paths.append(converted)
+                    video_path = converted
+                else:
+                    # If re-encode was skipped/unavailable, at least move moov atom for stream start.
                     remuxed = await _remux_faststart(video_path, ffmpeg_bin)
                     if remuxed != video_path:
                         generated_paths.append(remuxed)
                         video_path = remuxed
-                else:
-                    converted = await _ensure_mobile_compatible_video(video_path, ffmpeg_bin)
-                    if converted != video_path:
-                        generated_paths.append(converted)
-                        video_path = converted
 
                 if video_path.stat().st_size > max_size_bytes:
                     duration_for_compress = result.duration_sec
