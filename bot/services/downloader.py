@@ -224,6 +224,15 @@ class DownloaderService:
             .replace("\\\\", "\\")
         )
 
+    @staticmethod
+    def _is_probable_instagram_media_url(url: str) -> bool:
+        lower = url.lower()
+        # Keep only probable Instagram CDN media URLs, skip generic page assets/icons/badges.
+        return (
+            (".cdninstagram.com" in lower or ".fbcdn.net" in lower or "scontent" in lower)
+            and any(ext in lower for ext in [".jpg", ".jpeg", ".png", ".webp"])
+        )
+
     def _fallback_instagram_gallery_assets(self, page_url: str, target_dir: Path) -> list[Path]:
         try:
             html_text = self._fetch_instagram_page(page_url)
@@ -241,14 +250,8 @@ class DownloaderService:
         for pattern in patterns:
             for m in re.finditer(pattern, html_text):
                 url = self._decode_escaped_url(m.group(1))
-                if url.startswith("http"):
+                if url.startswith("http") and self._is_probable_instagram_media_url(url):
                     found.setdefault(url, None)
-
-        # Last-resort broad capture for escaped CDN image URLs in inline JSON payloads.
-        for m in re.finditer(r"https:\\/\\/[^\"']+?\.(?:jpg|jpeg|png|webp)[^\"']*", html_text, flags=re.IGNORECASE):
-            url = self._decode_escaped_url(m.group(0))
-            if url.startswith("http"):
-                found.setdefault(url, None)
 
         paths: list[Path] = []
         for idx, url in enumerate(found.keys(), 1):

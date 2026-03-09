@@ -92,10 +92,11 @@ async def handle_link(
     path = urlparse(url).path.lower().lstrip("/")
     is_instagram_post = path.startswith("p/")
     is_instagram_reel = path.startswith("reel/")
+    is_instagram_video_post = path.startswith("tv/")
 
-    # For Instagram post links, process automatically (image/video post).
-    # Reels keep explicit format selection.
-    if platform == "instagram" and is_instagram_post and not is_instagram_reel:
+    # Reels/video-posts -> format buttons; classic posts/carousels -> auto.
+    # Unknown/other Instagram paths default to auto to avoid wrong format UI on image posts.
+    if platform == "instagram" and not (is_instagram_reel or is_instagram_video_post):
         await queue.enqueue(
             DownloadJob(
                 request_id=request_id,
