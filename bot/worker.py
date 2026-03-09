@@ -345,6 +345,7 @@ async def worker() -> None:
         cancel_requested = False
         progress_target = 0.0
         progress_visible = 0
+        progress_enabled = True
 
         async def on_progress(progress_text: str) -> None:
             import re
@@ -356,7 +357,7 @@ async def worker() -> None:
 
         async def smooth_progress() -> None:
             nonlocal progress_visible
-            while True:
+            while progress_enabled:
                 await asyncio.sleep(0.25)
                 if progress_visible < int(progress_target):
                     progress_visible += 1
@@ -524,6 +525,10 @@ async def worker() -> None:
                     selected_format=job.option,
                     duration_sec=result.duration_sec,
                 )
+            progress_enabled = False
+            progress_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await progress_task
             await bot.edit_message_text(
                 chat_id=job.chat_id,
                 message_id=status_msg.message_id,
@@ -531,6 +536,10 @@ async def worker() -> None:
                 reply_markup=favorite_keyboard_localized(row.id, job.language),
             )
         except asyncio.CancelledError:
+            progress_enabled = False
+            progress_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await progress_task
             with suppress(Exception):
                 await bot.edit_message_text(
                     chat_id=job.chat_id,
@@ -538,6 +547,10 @@ async def worker() -> None:
                     text=tr("flow_cancelled", job.language),
                 )
         except Exception as exc:
+            progress_enabled = False
+            progress_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await progress_task
             fail_key = "failed"
             msg = str(exc).lower()
             if "cancelled by user" in msg:
@@ -569,6 +582,7 @@ async def worker() -> None:
                 cancel_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await cancel_task
+                progress_enabled = False
                 progress_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await progress_task
