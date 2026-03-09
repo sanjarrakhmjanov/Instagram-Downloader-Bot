@@ -13,7 +13,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import FSInputFile, InputMediaPhoto
 from redis.asyncio import Redis
 
-from bot.config import get_settings
+from bot.config import ensure_instagram_cookies_file, get_settings
 from bot.db.repo import DownloadRepository
 from bot.db.session import SessionLocal, init_db
 from bot.i18n import tr
@@ -310,6 +310,7 @@ async def _compress_to_target_size(
 async def worker() -> None:
     settings = get_settings()
     setup_json_logging(settings.log_level)
+    cookies_file = ensure_instagram_cookies_file(settings)
     await init_db()
 
     ffmpeg_bin = settings.ffmpeg_path or shutil.which("ffmpeg")
@@ -325,7 +326,7 @@ async def worker() -> None:
         settings.download_dir,
         settings.request_timeout_sec,
         ffmpeg_location=ffmpeg_bin,
-        instagram_cookies_file=settings.instagram_cookies_file,
+        instagram_cookies_file=cookies_file,
     )
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 

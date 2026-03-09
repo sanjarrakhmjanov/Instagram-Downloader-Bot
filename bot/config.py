@@ -1,4 +1,6 @@
+import base64
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,6 +35,7 @@ class Settings(BaseSettings):
     welcome_photo_file_id: str | None = Field(default=None, alias="WELCOME_PHOTO_FILE_ID")
     ffmpeg_path: str | None = Field(default=None, alias="FFMPEG_PATH")
     instagram_cookies_file: str | None = Field(default=None, alias="INSTAGRAM_COOKIES_FILE")
+    instagram_cookies_content_b64: str | None = Field(default=None, alias="INSTAGRAM_COOKIES_CONTENT_B64")
 
     @property
     def sqlalchemy_dsn(self) -> str:
@@ -50,3 +53,16 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def ensure_instagram_cookies_file(settings: Settings) -> str | None:
+    if not settings.instagram_cookies_file:
+        return None
+    if settings.instagram_cookies_content_b64:
+        target = Path(settings.instagram_cookies_file)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = base64.b64decode(settings.instagram_cookies_content_b64.encode("utf-8"))
+        target.write_bytes(data)
+        return str(target)
+    path = Path(settings.instagram_cookies_file)
+    return str(path) if path.exists() else None

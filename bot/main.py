@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 from redis.asyncio import Redis
 
-from bot.config import get_settings
+from bot.config import ensure_instagram_cookies_file, get_settings
 from bot.db.session import SessionLocal, init_db
 from bot.handlers import setup_routers
 from bot.json_logger import setup_json_logging
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     settings = get_settings()
     setup_json_logging(settings.log_level)
+    cookies_file = ensure_instagram_cookies_file(settings)
 
     await init_db()
     redis = Redis.from_url(settings.redis_dsn, decode_responses=True)
@@ -54,7 +55,7 @@ async def main() -> None:
         settings.download_dir,
         settings.request_timeout_sec,
         ffmpeg_location=settings.ffmpeg_path,
-        instagram_cookies_file=settings.instagram_cookies_file,
+        instagram_cookies_file=cookies_file,
     )
     logger.info("Bot started")
     try:
