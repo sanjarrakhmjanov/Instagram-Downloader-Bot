@@ -1,7 +1,6 @@
 from html import escape
 
 from aiogram import F, Router
-from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -11,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.config import Settings
 from bot.db.repo import DownloadRepository, FavoriteRepository, UserRepository
 from bot.i18n import tr
-from bot.keyboards.common import language_keyboard, start_actions_keyboard
+from bot.keyboards.common import language_keyboard
 from bot.services.queue import QueueService
 
 router = Router()
@@ -24,28 +23,14 @@ async def _lang(message: Message, session: AsyncSession, settings: Settings) -> 
     return await repo.get_language(message.from_user.id, settings.default_language)
 
 
-def _menu_texts() -> dict[str, set[str]]:
-    langs = ("uz", "ru", "en")
-    return {
-        "download": {tr("menu_download", l) for l in langs},
-        "help": {tr("menu_help", l) for l in langs},
-        "settings": {tr("menu_settings", l) for l in langs},
-        "history": {tr("menu_history", l) for l in langs},
-        "favorites": {tr("menu_favorites", l) for l in langs},
-        "admin": {tr("menu_admin", l) for l in langs},
-    }
-
-
 @router.message(Command("start"))
 async def cmd_start(message: Message, session: AsyncSession, settings: Settings) -> None:
     if not message.from_user:
         return
     user_repo = UserRepository(session)
     await user_repo.get_or_create(message.from_user.id, settings.default_language)
-    await message.answer(
-        tr("start_choose_language", settings.default_language),
-        reply_markup=language_keyboard("start"),
-    )
+    lang = await _lang(message, session, settings)
+    await message.answer(tr("start", lang))
 
 
 @router.message(Command("help"))
@@ -146,31 +131,6 @@ async def cmd_admin(message: Message, session: AsyncSession, settings: Settings)
             favorites=stats["favorites"],
         )
     )
-
-
-@router.message(F.text)
-async def menu_button_handler(message: Message, session: AsyncSession, settings: Settings) -> None:
-    if not message.text or not message.from_user:
-        return
-
-    labels = _menu_texts()
-    text = message.text.strip()
-    lang = await _lang(message, session, settings)
-
-    if text in labels["download"]:
-        await message.answer(tr("send_link_prompt", lang))
-    elif text in labels["help"]:
-        await cmd_help(message, session, settings)
-    elif text in labels["settings"]:
-        await cmd_settings(message, session, settings)
-    elif text in labels["history"]:
-        await cmd_history(message, session, settings)
-    elif text in labels["favorites"]:
-        await cmd_favorites(message, session, settings)
-    elif text in labels["admin"]:
-        await cmd_admin(message, session, settings)
-    else:
-        raise SkipHandler()
 
 
 @router.message(F.text.startswith("/"))

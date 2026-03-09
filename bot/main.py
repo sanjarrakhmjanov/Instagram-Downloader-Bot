@@ -47,8 +47,6 @@ async def main() -> None:
             BotCommand(command="settings", description="Language settings"),
             BotCommand(command="history", description="Download history"),
             BotCommand(command="favorites", description="Saved links"),
-            BotCommand(command="cancel", description="Cancel current flow"),
-            BotCommand(command="admin", description="Admin stats"),
         ]
     )
 

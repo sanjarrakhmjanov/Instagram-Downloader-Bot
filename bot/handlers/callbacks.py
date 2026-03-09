@@ -12,7 +12,6 @@ from bot.config import Settings
 from bot.db.models import Download
 from bot.db.repo import FavoriteRepository, UserRepository
 from bot.i18n import tr
-from bot.keyboards.common import start_actions_keyboard
 from bot.services.queue import DownloadJob, QueueService
 from bot.states.download import DownloadFlow
 
@@ -39,33 +38,23 @@ async def cb_set_language(
         except TelegramNetworkError:
             pass
         if source == "start":
-            is_admin = callback.from_user.id in settings.admin_ids
             if settings.welcome_photo_file_id:
                 await callback.message.answer_photo(
                     settings.welcome_photo_file_id,
                     caption=tr("start", lang),
-                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             elif settings.welcome_image_url:
                 await callback.message.answer_photo(
                     settings.welcome_image_url,
                     caption=tr("start", lang),
-                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             elif settings.welcome_animation_url:
                 await callback.message.answer_animation(
                     settings.welcome_animation_url,
                     caption=tr("start", lang),
-                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
                 )
             else:
-                await callback.message.answer(
-                    tr("start", lang),
-                    reply_markup=start_actions_keyboard(lang, is_admin=is_admin),
-                )
-            await callback.message.answer(
-                tr("send_link_prompt", lang),
-            )
+                await callback.message.answer(tr("start", lang))
 
 
 @router.callback_query(F.data.startswith("dl:"))
@@ -142,4 +131,3 @@ async def cb_add_favorite(
         title=row.title,
     )
     await callback.answer(tr("saved_to_favorites", lang), show_alert=False)
-
