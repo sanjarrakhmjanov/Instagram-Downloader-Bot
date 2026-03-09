@@ -238,10 +238,74 @@ class DownloaderService:
         # Keep only probable Instagram CDN media URLs, skip generic page assets/icons/badges.
         if any(token in lower for token in ["appstore", "google-play", "googleplay", "microsoft", "badge", "sprite"]):
             return False
+        if not (".cdninstagram.com" in lower or ".fbcdn.net" in lower or "scontent" in lower):
+            return False
         return (
-            (".cdninstagram.com" in lower or ".fbcdn.net" in lower or "scontent" in lower)
-            and any(ext in lower for ext in [".jpg", ".jpeg", ".png", ".webp"])
+            any(ext in lower for ext in [".jpg", ".jpeg", ".png", ".webp", ".mp4"])
         )
+
+    def _fallback_instagram_html_assets(
+        self,
+        page_url: str,
+        target_dir: Path,
+        *,
+        prefer_video: bool,
+    ) -> list[Path]:
+        try:
+            html_text = self._fetch_instagram_page(page_url)
+        except Exception:
+            return []
+
+        found: "OrderedDict[str, str]" = OrderedDict()
+        video_patterns = [
+            r'"video_url":"([^"]+)"',
+            r'"contentUrl":"([^"]+\.mp4[^"]*)"',
+            r'"video_versions":\[\{[^]]*?"url":"([^"]+)"',
+            r'https:\\/\\/[^\"\']+?\.mp4[^\"\']*',
+        ]
+        image_patterns = [
+            r'"display_url":"([^"]+)"',
+            r'"display_src":"([^"]+)"',
+            r'"thumbnail_src":"([^"]+)"',
+            r'"image_versions2":\{"candidates":\[\{"url":"([^"]+)"',
+            r'https:\\/\\/[^\"\']+?\.(?:jpg|jpeg|png|webp)[^\"\']*',
+        ]
+        patterns = video_patterns + image_patterns if prefer_video else image_patterns + video_patterns
+        for pattern in patterns:
+            for m in re.finditer(pattern, html_text, flags=re.IGNORECASE):
+                raw = m.group(1) if m.groups() else m.group(0)
+                media_url = self._decode_escaped_url(raw)
+                if not (media_url.startswith("http") and self._is_probable_instagram_media_url(media_url)):
+                    continue
+                low = media_url.lower()
+                if ".mp4" in low:
+                    found.setdefault(media_url, ".mp4")
+                elif ".png" in low:
+                    found.setdefault(media_url, ".png")
+                elif ".webp" in low:
+                    found.setdefault(media_url, ".webp")
+                else:
+                    found.setdefault(media_url, ".jpg")
+
+        paths: list[Path] = []
+        for idx, (u, ext) in enumerate(found.items(), 1):
+            if prefer_video and ext != ".mp4":
+                continue
+            if (not prefer_video) and ext == ".mp4":
+                # For post-first fallback keep still media first.
+                continue
+            target = target_dir / f"instagram_html_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(u, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                if ext != ".mp4" and target.stat().st_size < 40 * 1024:
+                    with contextlib.suppress(Exception):
+                        target.unlink()
+                    continue
+                paths.append(target)
+        return paths
 
     def _fallback_instagram_gallery_assets(self, page_url: str, target_dir: Path) -> list[Path]:
         try:
@@ -506,6 +570,14 @@ class DownloaderService:
                         logger.warning("Extractor access restricted, trying fallback chain")
                         continue
                     raise
+
+            html_assets = self._fallback_instagram_html_assets(
+                url,
+                download_dir,
+                prefer_video=is_instagram_video_link,
+            )
+            if html_assets:
+                return [str(p) for p in html_assets], {"title": "Instagram media", "duration": None}
 
             gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
             if gallery_assets and not is_instagram_video_link:
