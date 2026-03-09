@@ -410,7 +410,11 @@ async def worker() -> None:
                     audio=FSInputFile(str(audio_path)),
                 )
             elif result.media_kind == "video":
-                source_path = result.file_paths[0]
+                video_ext = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
+                source_path = next(
+                    (p for p in result.file_paths if p.suffix.lower() in video_ext and p.exists()),
+                    result.file_paths[0],
+                )
                 promo_line = tr("promo_line", job.language)
                 probe_before = _probe_media(source_path, ffprobe_bin)
                 logger.info(

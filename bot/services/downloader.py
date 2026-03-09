@@ -188,16 +188,24 @@ class DownloaderService:
         title = self._extract_og_tag(html_text, "og:title") or "Instagram media"
         return MediaMetadata(title=title, duration_sec=None, webpage_url=page_url)
 
-    def _fallback_instagram_og_asset(self, page_url: str, target_dir: Path) -> Path | None:
+    def _fallback_instagram_og_asset(
+        self,
+        page_url: str,
+        target_dir: Path,
+        *,
+        allow_image: bool = True,
+    ) -> Path | None:
         try:
             html_text = self._fetch_instagram_page(page_url)
         except Exception:
             return None
-        media_url = self._extract_og_tag(html_text, "og:video") or self._extract_og_tag(html_text, "og:image")
+        media_url = self._extract_og_tag(html_text, "og:video")
+        if not media_url and allow_image:
+            media_url = self._extract_og_tag(html_text, "og:image")
         if not media_url:
             # Fallback for pages where OG tags are missing but inline JSON still contains media URLs.
             video_match = re.search(r'"video_url":"([^"]+)"', html_text)
-            image_match = re.search(r'"display_url":"([^"]+)"', html_text)
+            image_match = re.search(r'"display_url":"([^"]+)"', html_text) if allow_image else None
             raw = video_match.group(1) if video_match else (image_match.group(1) if image_match else "")
             if raw:
                 media_url = (
@@ -382,6 +390,7 @@ class DownloaderService:
 
         def _download() -> tuple[list[str], dict[str, Any]]:
             is_instagram_post = "instagram.com/p/" in url.lower()
+            is_instagram_video_link = ("instagram.com/reel/" in url.lower()) or ("instagram.com/tv/" in url.lower())
             outtmpl = str(download_dir / "%(title).100B.%(ext)s")
             base_options: dict[str, Any] = {
                 "outtmpl": outtmpl,
@@ -499,11 +508,15 @@ class DownloaderService:
                     raise
 
             gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
-            if gallery_assets:
+            if gallery_assets and not is_instagram_video_link:
                 return [str(p) for p in gallery_assets], {"title": "Instagram media", "duration": None}
 
-            fallback_asset = self._fallback_instagram_og_asset(url, download_dir)
-            if not fallback_asset:
+            fallback_asset = self._fallback_instagram_og_asset(
+                url,
+                download_dir,
+                allow_image=not is_instagram_video_link,
+            )
+            if not fallback_asset and not is_instagram_video_link:
                 fallback_asset = self._fallback_instagram_oembed_asset(url, download_dir)
             if fallback_asset:
                 return [str(fallback_asset)], {"title": "Instagram media", "duration": None}
@@ -540,7 +553,8 @@ class DownloaderService:
 
         duration = info.get("duration")
         duration_int = int(duration) if isinstance(duration, (int, float)) else None
-        primary = resolved_paths[0]
+        video_ext = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
+        primary = next((p for p in resolved_paths if p.suffix.lower() in video_ext), resolved_paths[0])
         return DownloadResult(
             file_paths=resolved_paths,
             title=info.get("title") or "Untitled",
