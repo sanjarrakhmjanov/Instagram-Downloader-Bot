@@ -29,6 +29,15 @@ def _extract_url(text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _instagram_url_kind(url: str) -> str:
+    path = urlparse(url).path.lower().lstrip("/")
+    if path.startswith("reel/") or path.startswith("tv/"):
+        return "video"
+    if path.startswith("p/"):
+        return "post"
+    return "unknown"
+
+
 def _format_duration(value: int | float | None) -> str:
     if isinstance(value, (int, float)):
         total_sec = max(0, int(value))
@@ -52,6 +61,7 @@ async def handle_link(
     if not url:
         return
     url = normalize_url(url)
+    ig_kind = _instagram_url_kind(url)
 
     user_repo = UserRepository(session)
     lang = await user_repo.get_language(message.from_user.id, settings.default_language)
@@ -89,14 +99,9 @@ async def handle_link(
 
     # Use the original normalized URL for routing decisions.
     # Metadata URL may be altered/fallback and can lose post/reel semantics.
-    path = urlparse(url).path.lower().lstrip("/")
-    is_instagram_post = path.startswith("p/")
-    is_instagram_reel = path.startswith("reel/")
-    is_instagram_video_post = path.startswith("tv/")
-
     # Reels/video-posts -> format buttons; classic posts/carousels -> auto.
-    # Unknown/other Instagram paths default to auto to avoid wrong format UI on image posts.
-    if platform == "instagram" and not (is_instagram_reel or is_instagram_video_post):
+    # Decide by original user URL to avoid metadata fallback side-effects.
+    if platform == "instagram" and ig_kind != "video":
         await queue.enqueue(
             DownloadJob(
                 request_id=request_id,
