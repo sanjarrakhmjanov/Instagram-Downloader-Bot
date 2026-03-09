@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY bot /app/bot
 COPY pyproject.toml /app/pyproject.toml
 COPY scripts /app/scripts
+COPY assets /app/assets
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir .
