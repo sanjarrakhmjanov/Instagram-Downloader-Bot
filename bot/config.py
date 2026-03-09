@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     welcome_image_url: str | None = Field(default=None, alias="WELCOME_IMAGE_URL")
     welcome_photo_file_id: str | None = Field(default=None, alias="WELCOME_PHOTO_FILE_ID")
     ffmpeg_path: str | None = Field(default=None, alias="FFMPEG_PATH")
+    instagram_cookies_file: str | None = Field(default=None, alias="INSTAGRAM_COOKIES_FILE")
 
     @property
     def sqlalchemy_dsn(self) -> str:

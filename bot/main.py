@@ -54,6 +54,7 @@ async def main() -> None:
         settings.download_dir,
         settings.request_timeout_sec,
         ffmpeg_location=settings.ffmpeg_path,
+        instagram_cookies_file=settings.instagram_cookies_file,
     )
     logger.info("Bot started")
     try:

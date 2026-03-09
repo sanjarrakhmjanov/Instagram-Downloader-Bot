@@ -325,6 +325,7 @@ async def worker() -> None:
         settings.download_dir,
         settings.request_timeout_sec,
         ffmpeg_location=ffmpeg_bin,
+        instagram_cookies_file=settings.instagram_cookies_file,
     )
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 

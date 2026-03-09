@@ -67,15 +67,29 @@ class DownloadResult:
 
 
 class DownloaderService:
-    def __init__(self, output_dir: str, timeout_sec: int = 900, ffmpeg_location: str | None = None):
+    def __init__(
+        self,
+        output_dir: str,
+        timeout_sec: int = 900,
+        ffmpeg_location: str | None = None,
+        instagram_cookies_file: str | None = None,
+    ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_sec = timeout_sec
         self.ffmpeg_location = ffmpeg_location or shutil.which("ffmpeg")
+        self.instagram_cookies_file = instagram_cookies_file
 
-    def _apply_common_ytdlp_options(self, options: dict[str, Any]) -> None:
+    def _apply_common_ytdlp_options(self, options: dict[str, Any], url: str | None = None) -> None:
         options["no_warnings"] = True
         options["logger"] = YtdlpLogAdapter()
+        if (
+            url
+            and "instagram.com" in url.lower()
+            and self.instagram_cookies_file
+            and Path(self.instagram_cookies_file).exists()
+        ):
+            options["cookiefile"] = self.instagram_cookies_file
 
     @staticmethod
     def _classify_media(path: Path, option: str) -> str:
@@ -111,18 +125,28 @@ class DownloaderService:
         return found
 
     @staticmethod
-    def _extract_direct_media_url(info: dict[str, Any]) -> tuple[str, str, str] | None:
+    def _extract_direct_media_urls(info: dict[str, Any]) -> list[tuple[str, str, str]]:
         candidates: list[dict[str, Any]] = [info]
         for entry in info.get("entries") or []:
             if isinstance(entry, dict):
                 candidates.append(entry)
+
+        seen: set[str] = set()
+        picked: list[tuple[str, str, str]] = []
         for item in candidates:
             url = item.get("url")
             ext = str(item.get("ext") or "").lower()
             title = str(item.get("title") or info.get("title") or "media")
-            if url and ext in {"jpg", "jpeg", "png", "webp", "bmp"}:
-                return str(url), f".{ext}", title
-        return None
+            if not url:
+                continue
+            if ext not in {"jpg", "jpeg", "png", "webp", "bmp", "mp4"}:
+                continue
+            u = str(url)
+            if u in seen:
+                continue
+            seen.add(u)
+            picked.append((u, f".{ext}", title))
+        return picked
 
     @staticmethod
     def _extract_og_tag(html_text: str, prop: str) -> str | None:
@@ -267,21 +291,28 @@ class DownloaderService:
         return target if target.exists() and target.stat().st_size > 0 else None
 
     @staticmethod
-    def _download_direct_media_asset(info: dict[str, Any], target_dir: Path) -> Path | None:
-        picked = DownloaderService._extract_direct_media_url(info)
-        if not picked:
-            return None
-        asset_url, suffix, title = picked
-        target = target_dir / f"{safe_basename(title)}{suffix}"
-        urllib.request.urlretrieve(asset_url, target)
-        return target if target.exists() and target.stat().st_size > 0 else None
+    def _download_direct_media_assets(info: dict[str, Any], target_dir: Path) -> list[Path]:
+        items = DownloaderService._extract_direct_media_urls(info)
+        if not items:
+            return []
+
+        paths: list[Path] = []
+        for idx, (asset_url, suffix, title) in enumerate(items, 1):
+            target = target_dir / f"{safe_basename(title)}_{idx:03d}{suffix}"
+            try:
+                urllib.request.urlretrieve(asset_url, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                paths.append(target)
+        return paths
 
     async def fetch_metadata(self, url: str) -> MediaMetadata:
         def _extract() -> dict[str, Any]:
             options: dict[str, Any] = {"quiet": True, "skip_download": True, "noplaylist": True}
             if self.ffmpeg_location:
                 options["ffmpeg_location"] = self.ffmpeg_location
-            self._apply_common_ytdlp_options(options)
+            self._apply_common_ytdlp_options(options, url=url)
             with yt_dlp.YoutubeDL(options) as ydl:
                 return ydl.extract_info(url, download=False)
 
@@ -345,7 +376,7 @@ class DownloaderService:
             }
             if self.ffmpeg_location:
                 base_options["ffmpeg_location"] = self.ffmpeg_location
-            self._apply_common_ytdlp_options(base_options)
+            self._apply_common_ytdlp_options(base_options, url=url)
             if option == "mp3":
                 base_options["postprocessors"] = [
                     {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
@@ -395,9 +426,9 @@ class DownloaderService:
                         prepared = ydl.prepare_filename(info)
                         if Path(prepared).exists():
                             return [prepared], info
-                        direct_asset = self._download_direct_media_asset(info, download_dir)
-                        if direct_asset:
-                            return [str(direct_asset)], info
+                        direct_assets = self._download_direct_media_assets(info, download_dir)
+                        if direct_assets:
+                            return [str(p) for p in direct_assets], info
                         raise DownloadError("Extractor returned metadata but no downloadable file was created")
                 except DownloadError as exc:
                     last_error = exc
