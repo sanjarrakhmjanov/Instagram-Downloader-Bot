@@ -83,6 +83,14 @@ class DownloaderService:
     def _apply_common_ytdlp_options(self, options: dict[str, Any], url: str | None = None) -> None:
         options["no_warnings"] = True
         options["logger"] = YtdlpLogAdapter()
+        options["http_headers"] = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        }
         if (
             url
             and "instagram.com" in url.lower()

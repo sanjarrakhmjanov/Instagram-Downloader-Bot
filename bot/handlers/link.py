@@ -1,6 +1,7 @@
 import re
 import uuid
 from html import escape
+from urllib.parse import urlparse
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramNetworkError
@@ -16,7 +17,7 @@ from bot.i18n import tr
 from bot.keyboards.common import format_keyboard
 from bot.services.downloader import DownloaderService
 from bot.services.platforms import detect_platform, normalize_url
-from bot.services.queue import PendingRequest, QueueService
+from bot.services.queue import DownloadJob, PendingRequest, QueueService
 from bot.states.download import DownloadFlow
 
 router = Router()
@@ -31,9 +32,8 @@ def _extract_url(text: str) -> str | None:
 def _format_duration(value: int | float | None) -> str:
     if isinstance(value, (int, float)):
         total_sec = max(0, int(value))
-    else:
-        total_sec = 0
-    return f"{total_sec // 60:02d}:{total_sec % 60:02d}"
+        return f"{total_sec // 60:02d}:{total_sec % 60:02d}"
+    return "N/A"
 
 
 @router.message(F.text)
@@ -86,6 +86,35 @@ async def handle_link(
         ),
         ttl_sec=settings.request_timeout_sec,
     )
+
+    path = urlparse(metadata.webpage_url).path.lower().lstrip("/")
+    is_instagram_post = path.startswith("p/")
+    is_instagram_reel = path.startswith("reel/")
+
+    # For Instagram post links, process automatically (image/video post).
+    # Reels keep explicit format selection.
+    if platform == "instagram" and is_instagram_post and not is_instagram_reel:
+        await queue.enqueue(
+            DownloadJob(
+                request_id=request_id,
+                user_id=message.from_user.id,
+                chat_id=message.chat.id,
+                url=metadata.webpage_url,
+                platform=platform,
+                title=metadata.title,
+                duration_sec=metadata.duration_sec,
+                option="video",
+                language=lang,
+            )
+        )
+        await queue.delete_pending(request_id)
+        await state.clear()
+        auto_text = tr("auto_processing", lang)
+        try:
+            await progress_msg.edit_text(auto_text)
+        except TelegramNetworkError:
+            await message.answer(auto_text)
+        return
 
     await state.set_state(DownloadFlow.awaiting_format)
     await state.update_data(request_id=request_id)
