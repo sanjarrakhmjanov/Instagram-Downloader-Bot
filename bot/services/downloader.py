@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import shutil
+from collections import OrderedDict
 import urllib.request
 from dataclasses import dataclass
 from html import unescape
@@ -181,6 +182,52 @@ class DownloaderService:
         except Exception:
             return None
         return target if target.exists() and target.stat().st_size > 0 else None
+
+    @staticmethod
+    def _decode_escaped_url(raw: str) -> str:
+        return (
+            raw.replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .replace("\\u0025", "%")
+            .replace("\\\\", "\\")
+        )
+
+    def _fallback_instagram_gallery_assets(self, page_url: str, target_dir: Path) -> list[Path]:
+        try:
+            html_text = self._fetch_instagram_page(page_url)
+        except Exception:
+            return []
+
+        # Collect multiple unique image urls for carousel/photo posts.
+        found: "OrderedDict[str, None]" = OrderedDict()
+        patterns = [
+            r'"display_url":"([^"]+)"',
+            r'"display_src":"([^"]+)"',
+            r'"thumbnail_src":"([^"]+)"',
+            r'"image_versions2":\{"candidates":\[\{"url":"([^"]+)"',
+        ]
+        for pattern in patterns:
+            for m in re.finditer(pattern, html_text):
+                url = self._decode_escaped_url(m.group(1))
+                if url.startswith("http"):
+                    found.setdefault(url, None)
+
+        paths: list[Path] = []
+        for idx, url in enumerate(found.keys(), 1):
+            ext = ".jpg"
+            low = url.lower()
+            if ".png" in low:
+                ext = ".png"
+            elif ".webp" in low:
+                ext = ".webp"
+            target = target_dir / f"instagram_gallery_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(url, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                paths.append(target)
+        return paths
 
     def _fallback_instagram_oembed_asset(self, page_url: str, target_dir: Path) -> Path | None:
         normalized = page_url if page_url.endswith("/") else f"{page_url}/"
@@ -366,6 +413,10 @@ class DownloaderService:
                         logger.warning("Instagram post has no video, trying image fallback")
                         continue
                     raise
+
+            gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
+            if gallery_assets:
+                return [str(p) for p in gallery_assets], {"title": "Instagram media", "duration": None}
 
             fallback_asset = self._fallback_instagram_og_asset(url, download_dir)
             if not fallback_asset:

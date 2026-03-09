@@ -491,6 +491,7 @@ async def worker() -> None:
                     )
                     logger.warning("Delivery fallback: send_document", extra={"request_id": job.request_id})
             elif result.media_kind == "photo":
+                promo_line = tr("promo_line", job.language)
                 photo_paths = [p for p in result.file_paths if _classify_by_ext(p) == "photo" and p.exists()]
                 if not photo_paths:
                     photo_paths = [result.file_paths[0]]
@@ -505,6 +506,7 @@ async def worker() -> None:
                                 chat_id=job.chat_id,
                                 photo=FSInputFile(str(p)),
                             )
+                await bot.send_message(chat_id=job.chat_id, text=promo_line)
             else:
                 doc_path = result.file_paths[0]
                 await bot.send_document(
