@@ -399,20 +399,25 @@ class DownloaderService:
                     {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
                 ]
             else:
-                # Improve mobile playback compatibility.
-                base_options["merge_output_format"] = "mp4"
-                base_options["postprocessors"] = [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]
+                if not is_instagram_post:
+                    # Improve mobile playback compatibility for direct video links.
+                    base_options["merge_output_format"] = "mp4"
+                    base_options["postprocessors"] = [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]
 
             format_attempts: list[str | None]
             if option == "mp3":
                 format_attempts = ["bestaudio/best", "best", None]
             else:
-                format_attempts = [
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
-                    "best[ext=mp4]/bestvideo+bestaudio/best",
-                    "best",
-                    None,
-                ]
+                if is_instagram_post:
+                    # For /p/ posts (including carousel), keep original media entries and avoid video-only filter.
+                    format_attempts = ["best", None]
+                else:
+                    format_attempts = [
+                        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+                        "best[ext=mp4]/bestvideo+bestaudio/best",
+                        "best",
+                        None,
+                    ]
 
             last_error: Exception | None = None
             for fmt in format_attempts:
