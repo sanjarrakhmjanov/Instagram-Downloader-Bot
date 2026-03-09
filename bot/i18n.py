@@ -306,9 +306,9 @@ TEXTS = {
         "en": "History is empty.",
     },
     "favorites_empty": {
-        "uz": "⭐ <b>Premium Sevimlilar</b> hozircha bo'sh.\n\nInstagram link yuboring va yuklab olingandan keyin <b>Sevimlilarga saqlash</b> tugmasini bosing.",
-        "ru": "⭐ <b>Premium Избранное</b> пока пусто.\n\nОтправьте Instagram ссылку и после загрузки нажмите <b>Сохранить в избранное</b>.",
-        "en": "⭐ <b>Premium Favorites</b> is empty.\n\nSend an Instagram link and tap <b>Save to favorites</b> after download.",
+        "uz": "⭐ <b>Premium Sevimlilar</b>\n\nHozircha saqlangan media yo'q.\nInstagram link yuboring va natijadan keyin <b>Premium Sevimli</b> tugmasini bosing.",
+        "ru": "⭐ <b>Premium Избранное</b>\n\nПока нет сохранённых медиа.\nОтправьте Instagram ссылку и после результата нажмите <b>Premium Избранное</b>.",
+        "en": "⭐ <b>Premium Favorites</b>\n\nNo saved media yet.\nSend an Instagram link and tap <b>Premium Favorite</b> after delivery.",
     },
     "saved_to_favorites": {
         "uz": "Sevimlilarga saqlandi.",
@@ -321,14 +321,14 @@ TEXTS = {
         "en": "⭐ Premium Favorite",
     },
     "favorites_header": {
-        "uz": "⭐ <b>Premium Sevimlilar</b>",
-        "ru": "⭐ <b>Premium Избранное</b>",
-        "en": "⭐ <b>Premium Favorites</b>",
+        "uz": "⭐ <b>Premium Sevimlilar</b>\nSaqlangan media ro'yxati:",
+        "ru": "⭐ <b>Premium Избранное</b>\nСписок сохранённых медиа:",
+        "en": "⭐ <b>Premium Favorites</b>\nSaved media list:",
     },
     "favorites_item": {
-        "uz": "#{idx} • <b>{title}</b>\n🌐 {url}",
-        "ru": "#{idx} • <b>{title}</b>\n🌐 {url}",
-        "en": "#{idx} • <b>{title}</b>\n🌐 {url}",
+        "uz": "┏ #{idx}\n┃ 🎬 <b>{title}</b>\n┃ 🔗 {url}\n┗━━━━━━━━━━━━",
+        "ru": "┏ #{idx}\n┃ 🎬 <b>{title}</b>\n┃ 🔗 {url}\n┗━━━━━━━━━━━━",
+        "en": "┏ #{idx}\n┃ 🎬 <b>{title}</b>\n┃ 🔗 {url}\n┗━━━━━━━━━━━━",
     },
     "admin_only": {
         "uz": "⛔ Bu bo'lim faqat administratorlar uchun ochiq.",
