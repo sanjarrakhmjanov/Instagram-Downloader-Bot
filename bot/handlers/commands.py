@@ -1,9 +1,10 @@
 from html import escape
+import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.types import Message
 from aiogram.types import ReplyKeyboardRemove
 from redis.asyncio import Redis
@@ -16,6 +17,7 @@ from bot.keyboards.common import language_keyboard
 from bot.services.queue import QueueService
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 async def _lang(message: Message, session: AsyncSession, settings: Settings) -> str:
@@ -36,8 +38,8 @@ async def _send_start_landing(message: Message, settings: Settings, lang: str) -
                 reply_markup=remove_kb,
             )
             return
-        except TelegramBadRequest:
-            pass
+        except (TelegramBadRequest, TelegramNetworkError) as exc:
+            logger.warning("Start photo(file_id) failed: %s", exc)
     if settings.welcome_image_url:
         try:
             await message.answer_photo(
@@ -46,8 +48,8 @@ async def _send_start_landing(message: Message, settings: Settings, lang: str) -
                 reply_markup=remove_kb,
             )
             return
-        except TelegramBadRequest:
-            pass
+        except (TelegramBadRequest, TelegramNetworkError) as exc:
+            logger.warning("Start photo(url) failed: %s", exc)
     if settings.welcome_animation_url:
         try:
             await message.answer_animation(
@@ -56,8 +58,8 @@ async def _send_start_landing(message: Message, settings: Settings, lang: str) -
                 reply_markup=remove_kb,
             )
             return
-        except TelegramBadRequest:
-            pass
+        except (TelegramBadRequest, TelegramNetworkError) as exc:
+            logger.warning("Start animation failed: %s", exc)
 
     await message.answer(text, reply_markup=remove_kb)
 

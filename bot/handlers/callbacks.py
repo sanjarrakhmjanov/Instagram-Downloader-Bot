@@ -1,7 +1,7 @@
 from contextlib import suppress
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from redis.asyncio import Redis
@@ -14,6 +14,7 @@ from bot.db.repo import FavoriteRepository, UserRepository
 from bot.i18n import tr
 from bot.services.queue import DownloadJob, QueueService
 from bot.states.download import DownloadFlow
+from bot.handlers.commands import _send_start_landing
 
 router = Router()
 
@@ -38,22 +39,9 @@ async def cb_set_language(
         except TelegramNetworkError:
             pass
         if source == "start":
-            if settings.welcome_photo_file_id:
-                await callback.message.answer_photo(
-                    settings.welcome_photo_file_id,
-                    caption=tr("start", lang),
-                )
-            elif settings.welcome_image_url:
-                await callback.message.answer_photo(
-                    settings.welcome_image_url,
-                    caption=tr("start", lang),
-                )
-            elif settings.welcome_animation_url:
-                await callback.message.answer_animation(
-                    settings.welcome_animation_url,
-                    caption=tr("start", lang),
-                )
-            else:
+            try:
+                await _send_start_landing(callback.message, settings, lang)
+            except (TelegramBadRequest, TelegramNetworkError):
                 await callback.message.answer(tr("start", lang))
 
 
