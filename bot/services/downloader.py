@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import http.cookiejar
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -240,6 +241,86 @@ class DownloaderService:
         )
         with urllib.request.urlopen(req, timeout=25) as resp:
             return resp.read().decode("utf-8", errors="ignore")
+
+    def _build_instagram_opener(self) -> urllib.request.OpenerDirector:
+        if self.instagram_cookies_file and Path(self.instagram_cookies_file).exists():
+            with contextlib.suppress(Exception):
+                jar = http.cookiejar.MozillaCookieJar(self.instagram_cookies_file)
+                jar.load(ignore_discard=True, ignore_expires=True)
+                return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+        return urllib.request.build_opener()
+
+    def _fallback_instagram_post_api_assets(self, page_url: str, target_dir: Path) -> list[Path]:
+        parsed = urlparse(page_url)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) < 2 or parts[0] != "p":
+            return []
+
+        api_url = f"https://www.instagram.com/p/{parts[1]}/?__a=1&__d=dis"
+        opener = self._build_instagram_opener()
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+                "X-IG-App-ID": "936619743392459",
+            },
+        )
+        try:
+            with opener.open(req, timeout=25) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        except Exception:
+            return []
+
+        media = data.get("graphql", {}).get("shortcode_media") or data.get("items", [{}])[0]
+        if not media:
+            return []
+
+        urls: "OrderedDict[str, str]" = OrderedDict()
+
+        def _pick(node: dict[str, Any]) -> None:
+            if not isinstance(node, dict):
+                return
+            if node.get("is_video"):
+                u = str(node.get("video_url") or "")
+                if u and self._is_probable_instagram_media_url(u):
+                    urls.setdefault(u, ".mp4")
+            else:
+                u = str(node.get("display_url") or node.get("thumbnail_src") or "")
+                if u and self._is_probable_instagram_media_url(u):
+                    ext = ".jpg"
+                    low = u.lower()
+                    if ".png" in low:
+                        ext = ".png"
+                    elif ".webp" in low:
+                        ext = ".webp"
+                    urls.setdefault(u, ext)
+
+        edges = media.get("edge_sidecar_to_children", {}).get("edges") or []
+        if edges:
+            for edge in edges:
+                _pick(edge.get("node") or {})
+        else:
+            _pick(media)
+
+        paths: list[Path] = []
+        for idx, (u, ext) in enumerate(urls.items(), 1):
+            target = target_dir / f"instagram_api_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(u, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                if ext != ".mp4" and target.stat().st_size < 40 * 1024:
+                    with contextlib.suppress(Exception):
+                        target.unlink()
+                    continue
+                paths.append(target)
+        return paths
 
     def _fallback_instagram_og_metadata(self, page_url: str) -> MediaMetadata | None:
         try:
@@ -729,6 +810,9 @@ class DownloaderService:
                                 meta_assets = self._download_direct_media_assets(meta_info, download_dir)
                                 if meta_assets:
                                     return [str(p) for p in meta_assets], info
+                            api_assets = self._fallback_instagram_post_api_assets(url, download_dir)
+                            if api_assets:
+                                return [str(p) for p in api_assets], info
                             sidecar_assets = self._fallback_instagram_sidecar_assets(url, download_dir)
                             if sidecar_assets:
                                 return [str(p) for p in sidecar_assets], info
@@ -792,6 +876,12 @@ class DownloaderService:
                             "title": meta_info.get("title") or "Instagram media",
                             "duration": meta_info.get("duration"),
                         }
+                api_assets = self._fallback_instagram_post_api_assets(url, download_dir)
+                if api_assets:
+                    return [str(p) for p in api_assets], {
+                        "title": "Instagram media",
+                        "duration": None,
+                    }
                 structured_assets = self._fallback_instagram_post_structured_assets(url, download_dir)
                 if structured_assets:
                     return [str(p) for p in structured_assets], {
