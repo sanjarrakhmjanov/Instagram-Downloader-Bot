@@ -161,12 +161,8 @@ class DownloaderService:
         _add(item.get("url"), str(item.get("ext") or ""))
         _add(item.get("display_url"), "jpg")
         _add(item.get("display_src"), "jpg")
-        _add(item.get("thumbnail"), "jpg")
-        _add(item.get("thumbnail_src"), "jpg")
-
-        for thumb in item.get("thumbnails") or []:
-            if isinstance(thumb, dict):
-                _add(thumb.get("url"), thumb.get("ext") or "jpg")
+        # Avoid thumbnail/sprite-like assets for strict post fidelity.
+        # These can be UI artifacts rather than real post media.
 
         for fmt in item.get("formats") or []:
             if isinstance(fmt, dict):
@@ -583,27 +579,16 @@ class DownloaderService:
                                 if p.exists() and p.stat().st_size > 0:
                                     merged.append(p)
 
-                            # If still single/no asset, enrich from HTML gallery fallback and merge.
-                            if len(merged) <= 1:
-                                html_assets = self._fallback_instagram_html_assets(
-                                    url,
-                                    download_dir,
-                                    prefer_video=False,
-                                )
-                                gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
-                                for p in [*html_assets, *gallery_assets]:
-                                    ps = str(p.resolve()) if p.exists() else str(p)
-                                    if ps in seen:
-                                        continue
-                                    seen.add(ps)
-                                    if p.exists() and p.stat().st_size > 0:
-                                        merged.append(p)
-
                             if len(merged) > 1:
                                 logger.info(
                                     "Instagram post carousel assembled",
                                     extra={"entry_count": entry_count, "asset_count": len(merged)},
                                 )
+                                return [str(p) for p in merged], info
+
+                            if entry_count >= 1 and merged:
+                                # Strict mode: for post links return only extractor-derived media.
+                                # This prevents unrelated HTML assets from being delivered.
                                 return [str(p) for p in merged], info
 
                         if requested_paths:
@@ -643,24 +628,25 @@ class DownloaderService:
                         continue
                     raise
 
-            html_assets = self._fallback_instagram_html_assets(
-                url,
-                download_dir,
-                prefer_video=is_instagram_video_link,
-            )
-            if html_assets:
-                return [str(p) for p in html_assets], {"title": "Instagram media", "duration": None}
+            if not is_instagram_post:
+                html_assets = self._fallback_instagram_html_assets(
+                    url,
+                    download_dir,
+                    prefer_video=is_instagram_video_link,
+                )
+                if html_assets:
+                    return [str(p) for p in html_assets], {"title": "Instagram media", "duration": None}
 
-            gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
-            if gallery_assets and not is_instagram_video_link:
-                return [str(p) for p in gallery_assets], {"title": "Instagram media", "duration": None}
+                gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
+                if gallery_assets and not is_instagram_video_link:
+                    return [str(p) for p in gallery_assets], {"title": "Instagram media", "duration": None}
 
             fallback_asset = self._fallback_instagram_og_asset(
                 url,
                 download_dir,
-                allow_image=not is_instagram_video_link,
+                allow_image=(not is_instagram_video_link) and (not is_instagram_post),
             )
-            if not fallback_asset and not is_instagram_video_link:
+            if not fallback_asset and (not is_instagram_video_link) and (not is_instagram_post):
                 fallback_asset = self._fallback_instagram_oembed_asset(url, download_dir)
             if fallback_asset:
                 return [str(fallback_asset)], {"title": "Instagram media", "duration": None}
