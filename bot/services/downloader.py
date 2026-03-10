@@ -101,6 +101,23 @@ class DownloaderService:
         ):
             options["cookiefile"] = self.instagram_cookies_file
 
+    def _extract_instagram_post_info_no_download(self, url: str) -> dict[str, Any] | None:
+        options: dict[str, Any] = {
+            "quiet": True,
+            "skip_download": True,
+            "noplaylist": False,
+            "extract_flat": False,
+            "no_warnings": True,
+        }
+        if self.ffmpeg_location:
+            options["ffmpeg_location"] = self.ffmpeg_location
+        self._apply_common_ytdlp_options(options, url=url)
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception:
+            return None
+
     @staticmethod
     def _classify_media(path: Path, option: str) -> str:
         if option == "mp3":
@@ -389,6 +406,49 @@ class DownloaderService:
                 paths.append(target)
         return paths
 
+    def _fallback_instagram_post_structured_assets(self, page_url: str, target_dir: Path) -> list[Path]:
+        try:
+            html_text = self._fetch_instagram_page(page_url)
+        except Exception:
+            return []
+
+        # Strict post-only extraction:
+        # - pull only media-like URLs from Instagram CDN
+        # - keep only post image bucket (t51.2885-15) to avoid avatars/sprites/assets
+        # - dedupe and filter tiny files
+        found: "OrderedDict[str, str]" = OrderedDict()
+        patterns = [
+            r'"image_versions2":\{"candidates":\[\{"url":"([^"]+)"',
+            r'"display_url":"([^"]+)"',
+            r'"display_resources":\[\{"src":"([^"]+)"',
+            r'"thumbnail_src":"([^"]+)"',
+        ]
+        for pattern in patterns:
+            for m in re.finditer(pattern, html_text, flags=re.IGNORECASE):
+                media_url = self._decode_escaped_url(m.group(1))
+                low = media_url.lower()
+                if not (media_url.startswith("http") and self._is_probable_instagram_media_url(media_url)):
+                    continue
+                if "t51.2885-15" not in low and "/vp/" not in low:
+                    continue
+                ext = ".jpg"
+                if ".png" in low:
+                    ext = ".png"
+                elif ".webp" in low:
+                    ext = ".webp"
+                found.setdefault(media_url, ext)
+
+        paths: list[Path] = []
+        for idx, (u, ext) in enumerate(found.items(), 1):
+            target = target_dir / f"instagram_post_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(u, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size >= 40 * 1024:
+                paths.append(target)
+        return paths
+
     def _fallback_instagram_oembed_asset(self, page_url: str, target_dir: Path) -> Path | None:
         normalized = page_url if page_url.endswith("/") else f"{page_url}/"
         api_url = f"https://www.instagram.com/api/v1/oembed/?url={quote(normalized, safe=':/?=&')}"
@@ -591,6 +651,14 @@ class DownloaderService:
                                 # This prevents unrelated HTML assets from being delivered.
                                 return [str(p) for p in merged], info
 
+                            # Retry with metadata-only extraction to recover full carousel URLs
+                            # when direct download extraction materializes an incomplete subset.
+                            meta_info = self._extract_instagram_post_info_no_download(url)
+                            if meta_info:
+                                meta_assets = self._download_direct_media_assets(meta_info, download_dir)
+                                if meta_assets:
+                                    return [str(p) for p in meta_assets], info
+
                         if requested_paths:
                             return [str(p) for p in requested_paths], info
                         prepared = ydl.prepare_filename(info)
@@ -640,6 +708,22 @@ class DownloaderService:
                 gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
                 if gallery_assets and not is_instagram_video_link:
                     return [str(p) for p in gallery_assets], {"title": "Instagram media", "duration": None}
+
+            if is_instagram_post and option != "mp3":
+                meta_info = self._extract_instagram_post_info_no_download(url)
+                if meta_info:
+                    meta_assets = self._download_direct_media_assets(meta_info, download_dir)
+                    if meta_assets:
+                        return [str(p) for p in meta_assets], {
+                            "title": meta_info.get("title") or "Instagram media",
+                            "duration": meta_info.get("duration"),
+                        }
+                structured_assets = self._fallback_instagram_post_structured_assets(url, download_dir)
+                if structured_assets:
+                    return [str(p) for p in structured_assets], {
+                        "title": "Instagram media",
+                        "duration": None,
+                    }
 
             fallback_asset = self._fallback_instagram_og_asset(
                 url,
