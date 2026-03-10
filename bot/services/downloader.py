@@ -422,6 +422,8 @@ class DownloaderService:
             r'"display_url":"([^"]+)"',
             r'"display_resources":\[\{"src":"([^"]+)"',
             r'"thumbnail_src":"([^"]+)"',
+            r'"video_url":"([^"]+)"',
+            r'"video_versions":\[\{"type":[^]]*?"url":"([^"]+)"',
         ]
         for pattern in patterns:
             for m in re.finditer(pattern, html_text, flags=re.IGNORECASE):
@@ -432,7 +434,9 @@ class DownloaderService:
                 if "t51.2885-15" not in low and "/vp/" not in low:
                     continue
                 ext = ".jpg"
-                if ".png" in low:
+                if ".mp4" in low:
+                    ext = ".mp4"
+                elif ".png" in low:
                     ext = ".png"
                 elif ".webp" in low:
                     ext = ".webp"
@@ -445,7 +449,11 @@ class DownloaderService:
                 urllib.request.urlretrieve(u, target)
             except Exception:
                 continue
-            if target.exists() and target.stat().st_size >= 40 * 1024:
+            if target.exists() and target.stat().st_size > 0:
+                if ext != ".mp4" and target.stat().st_size < 40 * 1024:
+                    with contextlib.suppress(Exception):
+                        target.unlink()
+                    continue
                 paths.append(target)
         return paths
 
@@ -724,6 +732,16 @@ class DownloaderService:
                         "title": "Instagram media",
                         "duration": None,
                     }
+                # Final no-error fallback for post links: send at least the canonical cover image.
+                fallback_asset = self._fallback_instagram_og_asset(
+                    url,
+                    download_dir,
+                    allow_image=True,
+                )
+                if not fallback_asset:
+                    fallback_asset = self._fallback_instagram_oembed_asset(url, download_dir)
+                if fallback_asset:
+                    return [str(fallback_asset)], {"title": "Instagram media", "duration": None}
 
             fallback_asset = self._fallback_instagram_og_asset(
                 url,
