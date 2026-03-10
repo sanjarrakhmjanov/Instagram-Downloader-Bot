@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -16,6 +17,8 @@ from bot.middlewares.rate_limit import RateLimitMiddleware
 from bot.services.downloader import DownloaderService
 
 logger = logging.getLogger(__name__)
+POLLING_LOCK_KEY = "bot:polling:lock"
+POLLING_LOCK_TTL_SEC = 120
 
 
 async def main() -> None:
@@ -25,6 +28,12 @@ async def main() -> None:
 
     await init_db()
     redis = Redis.from_url(settings.redis_dsn, decode_responses=True)
+    lock_value = uuid.uuid4().hex
+    acquired = await redis.set(POLLING_LOCK_KEY, lock_value, ex=POLLING_LOCK_TTL_SEC, nx=True)
+    if not acquired:
+        logger.error("Another bot polling instance is already active, exiting")
+        await redis.aclose()
+        return
 
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
@@ -58,6 +67,19 @@ async def main() -> None:
         instagram_cookies_file=cookies_file,
     )
     logger.info("Bot started")
+    lock_running = True
+
+    async def _renew_lock() -> None:
+        while lock_running:
+            await asyncio.sleep(POLLING_LOCK_TTL_SEC // 3)
+            current = await redis.get(POLLING_LOCK_KEY)
+            if current != lock_value:
+                logger.error("Polling lock lost, stopping bot to avoid conflicts")
+                await dp.stop_polling()
+                return
+            await redis.expire(POLLING_LOCK_KEY, POLLING_LOCK_TTL_SEC)
+
+    renew_task = asyncio.create_task(_renew_lock())
     try:
         await dp.start_polling(
             bot,
@@ -66,8 +88,12 @@ async def main() -> None:
             downloader=downloader,
         )
     finally:
-        await redis.close()
-        await bot.session.close()
+        lock_running = False
+        renew_task.cancel()
+        if await redis.get(POLLING_LOCK_KEY) == lock_value:
+            await redis.delete(POLLING_LOCK_KEY)
+        await redis.aclose()
+        await bot.session.aclose()
 
 
 if __name__ == "__main__":

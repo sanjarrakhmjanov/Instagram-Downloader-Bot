@@ -88,7 +88,8 @@ async def handle_link(
             request_id=request_id,
             user_id=message.from_user.id,
             chat_id=message.chat.id,
-            url=metadata.webpage_url,
+            # Preserve original normalized user URL to keep post/reel routing stable.
+            url=url,
             platform=platform,
             title=metadata.title,
             duration_sec=metadata.duration_sec,
@@ -101,13 +102,13 @@ async def handle_link(
     # Metadata URL may be altered/fallback and can lose post/reel semantics.
     # Reels/video-posts -> format buttons; classic posts/carousels -> auto.
     # Decide by original user URL to avoid metadata fallback side-effects.
-    if platform == "instagram" and ig_kind != "video":
+    if platform == "instagram" and ig_kind == "post":
         await queue.enqueue(
             DownloadJob(
                 request_id=request_id,
                 user_id=message.from_user.id,
                 chat_id=message.chat.id,
-                url=metadata.webpage_url,
+                url=url,
                 platform=platform,
                 title=metadata.title,
                 duration_sec=metadata.duration_sec,
