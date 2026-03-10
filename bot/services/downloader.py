@@ -21,6 +21,8 @@ from bot.services.safe_files import safe_basename
 
 logger = logging.getLogger(__name__)
 
+MEDIA_EXT_RE = re.compile(r"\.(mp4|jpg|jpeg|png|webp|bmp)(?:$|[?#])", flags=re.IGNORECASE)
+
 
 class YtdlpLogAdapter:
     _ansi_re = re.compile(r"\x1b\[[0-9;]*m")
@@ -133,27 +135,73 @@ class DownloaderService:
         return found
 
     @staticmethod
-    def _extract_direct_media_urls(info: dict[str, Any]) -> list[tuple[str, str, str]]:
-        candidates: list[dict[str, Any]] = [info]
-        for entry in info.get("entries") or []:
-            if isinstance(entry, dict):
-                candidates.append(entry)
+    def _infer_media_ext(url: str, fallback_ext: str | None = None) -> str | None:
+        match = MEDIA_EXT_RE.search(url)
+        if match:
+            return f".{match.group(1).lower()}"
+        if fallback_ext:
+            ext = fallback_ext.lower().lstrip(".")
+            if ext in {"jpg", "jpeg", "png", "webp", "bmp", "mp4"}:
+                return f".{ext}"
+        return None
+
+    @classmethod
+    def _extract_entry_media_url(cls, item: dict[str, Any]) -> tuple[str, str] | None:
+        candidates: list[tuple[str, str]] = []
+
+        def _add(url: Any, fallback_ext: str | None = None) -> None:
+            if not url:
+                return
+            u = str(url)
+            ext = cls._infer_media_ext(u, fallback_ext)
+            if not ext:
+                return
+            candidates.append((u, ext))
+
+        _add(item.get("url"), str(item.get("ext") or ""))
+        _add(item.get("display_url"), "jpg")
+        _add(item.get("display_src"), "jpg")
+        _add(item.get("thumbnail"), "jpg")
+        _add(item.get("thumbnail_src"), "jpg")
+
+        for thumb in item.get("thumbnails") or []:
+            if isinstance(thumb, dict):
+                _add(thumb.get("url"), thumb.get("ext") or "jpg")
+
+        for fmt in item.get("formats") or []:
+            if isinstance(fmt, dict):
+                _add(fmt.get("url"), fmt.get("ext"))
+
+        if not candidates:
+            return None
+
+        video = next((candidate for candidate in candidates if candidate[1] == ".mp4"), None)
+        if video:
+            return video
+
+        # Prefer higher quality still image if available, otherwise first valid item.
+        for ext in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+            match = next((candidate for candidate in candidates if candidate[1] == ext), None)
+            if match:
+                return match
+        return candidates[0]
+
+    @classmethod
+    def _extract_direct_media_urls(cls, info: dict[str, Any]) -> list[tuple[str, str, str]]:
+        entries = [entry for entry in (info.get("entries") or []) if isinstance(entry, dict)]
+        candidates: list[dict[str, Any]] = entries or [info]
 
         seen: set[str] = set()
         picked: list[tuple[str, str, str]] = []
         for item in candidates:
-            url = item.get("url")
-            ext = str(item.get("ext") or "").lower()
-            title = str(item.get("title") or info.get("title") or "media")
-            if not url:
+            selected = cls._extract_entry_media_url(item)
+            if not selected:
                 continue
-            if ext not in {"jpg", "jpeg", "png", "webp", "bmp", "mp4"}:
+            media_url, ext = selected
+            if media_url in seen:
                 continue
-            u = str(url)
-            if u in seen:
-                continue
-            seen.add(u)
-            picked.append((u, f".{ext}", title))
+            seen.add(media_url)
+            picked.append((media_url, ext, str(item.get("title") or info.get("title") or "media")))
         return picked
 
     @staticmethod
