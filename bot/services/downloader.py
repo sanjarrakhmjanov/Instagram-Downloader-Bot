@@ -322,6 +322,54 @@ class DownloaderService:
                 paths.append(target)
         return paths
 
+    def _fallback_instagram_img_index_assets(self, page_url: str, target_dir: Path) -> list[Path]:
+        parsed = urlparse(page_url)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) < 2 or parts[0] != "p":
+            return []
+
+        base = f"{parsed.scheme}://{parsed.netloc}/p/{parts[1]}/"
+        found: "OrderedDict[str, str]" = OrderedDict()
+        for idx in range(1, 11):
+            probe_url = f"{base}?img_index={idx}"
+            try:
+                html_text = self._fetch_instagram_page(probe_url)
+            except Exception:
+                continue
+
+            media_url = self._extract_og_tag(html_text, "og:video")
+            if not media_url:
+                media_url = self._extract_og_tag(html_text, "og:image")
+            if not media_url:
+                continue
+            media_url = self._decode_escaped_url(media_url)
+            if not (media_url.startswith("http") and self._is_probable_instagram_media_url(media_url)):
+                continue
+            low = media_url.lower()
+            ext = ".jpg"
+            if ".mp4" in low:
+                ext = ".mp4"
+            elif ".png" in low:
+                ext = ".png"
+            elif ".webp" in low:
+                ext = ".webp"
+            found.setdefault(media_url, ext)
+
+        paths: list[Path] = []
+        for idx, (u, ext) in enumerate(found.items(), 1):
+            target = target_dir / f"instagram_imgidx_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(u, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                if ext != ".mp4" and target.stat().st_size < 40 * 1024:
+                    with contextlib.suppress(Exception):
+                        target.unlink()
+                    continue
+                paths.append(target)
+        return paths
+
     def _fallback_instagram_og_metadata(self, page_url: str) -> MediaMetadata | None:
         try:
             html_text = self._fetch_instagram_page(page_url)
@@ -813,6 +861,9 @@ class DownloaderService:
                             api_assets = self._fallback_instagram_post_api_assets(url, download_dir)
                             if api_assets:
                                 return [str(p) for p in api_assets], info
+                            img_index_assets = self._fallback_instagram_img_index_assets(url, download_dir)
+                            if img_index_assets:
+                                return [str(p) for p in img_index_assets], info
                             sidecar_assets = self._fallback_instagram_sidecar_assets(url, download_dir)
                             if sidecar_assets:
                                 return [str(p) for p in sidecar_assets], info
@@ -879,6 +930,12 @@ class DownloaderService:
                 api_assets = self._fallback_instagram_post_api_assets(url, download_dir)
                 if api_assets:
                     return [str(p) for p in api_assets], {
+                        "title": "Instagram media",
+                        "duration": None,
+                    }
+                img_index_assets = self._fallback_instagram_img_index_assets(url, download_dir)
+                if img_index_assets:
+                    return [str(p) for p in img_index_assets], {
                         "title": "Instagram media",
                         "duration": None,
                     }
