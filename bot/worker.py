@@ -126,6 +126,75 @@ async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -
     return converted
 
 
+async def _ensure_legacy_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -> Path:
+    if not ffmpeg_path:
+        return path
+    converted = path.with_name(f"{path.stem}.legacy.mp4")
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-i",
+        str(path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-sn",
+        "-dn",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-vf",
+        "scale='trunc(min(960,iw)/2)*2':'trunc(min(960,iw)*ih/iw/2)*2',fps=25,setsar=1,format=yuv420p",
+        "-vsync",
+        "cfr",
+        "-r",
+        "25",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.0",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "26",
+        "-g",
+        "50",
+        "-c:a",
+        "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-b:a",
+        "96k",
+        "-af",
+        "aresample=async=1:first_pts=0",
+        "-movflags",
+        "+faststart",
+        str(converted),
+    ]
+
+    def _run() -> int:
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        return proc.returncode
+
+    code = await asyncio.to_thread(_run)
+    if code != 0 or not converted.exists() or converted.stat().st_size == 0:
+        with suppress(Exception):
+            if converted.exists():
+                converted.unlink()
+        return path
+    return converted
+
+
 def _fps_from_rate(rate: str | None) -> float | None:
     if not rate or rate in {"0/0", "N/A"}:
         return None
@@ -460,6 +529,12 @@ async def worker() -> None:
                     raise ValueError("Video file too large for Telegram upload.")
 
                 probe_after = _probe_media(video_path, ffprobe_bin)
+                if ffmpeg_bin and not _is_telegram_video_compatible(probe_after):
+                    legacy = await _ensure_legacy_mobile_compatible_video(video_path, ffmpeg_bin)
+                    if legacy != video_path:
+                        generated_paths.append(legacy)
+                        video_path = legacy
+                        probe_after = _probe_media(video_path, ffprobe_bin)
                 width, height, duration = _extract_video_meta(probe_after)
                 logger.info(
                     "Video ready for Telegram",
@@ -515,7 +590,21 @@ async def worker() -> None:
 
                 chunks = [prepared_media[i : i + 10] for i in range(0, len(prepared_media), 10)]
                 for chunk in chunks:
-                    await bot.send_media_group(chat_id=job.chat_id, media=chunk)
+                    try:
+                        await bot.send_media_group(chat_id=job.chat_id, media=chunk)
+                    except TelegramBadRequest:
+                        for item in chunk:
+                            if isinstance(item, InputMediaVideo):
+                                await bot.send_video(
+                                    chat_id=job.chat_id,
+                                    video=item.media,
+                                    width=item.width,
+                                    height=item.height,
+                                    duration=item.duration,
+                                    supports_streaming=True,
+                                )
+                            else:
+                                await bot.send_photo(chat_id=job.chat_id, photo=item.media)
                 await bot.send_message(chat_id=job.chat_id, text=promo_line)
             elif result.media_kind == "video":
                 video_ext = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}

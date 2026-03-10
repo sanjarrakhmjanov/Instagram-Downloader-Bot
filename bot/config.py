@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     welcome_animation_url: str | None = Field(default=None, alias="WELCOME_ANIMATION_URL")
     welcome_image_url: str | None = Field(default=None, alias="WELCOME_IMAGE_URL")
     welcome_photo_file_id: str | None = Field(default=None, alias="WELCOME_PHOTO_FILE_ID")
+    welcome_local_image_path: str | None = Field(default=None, alias="WELCOME_LOCAL_IMAGE_PATH")
     ffmpeg_path: str | None = Field(default=None, alias="FFMPEG_PATH")
     instagram_cookies_file: str | None = Field(default=None, alias="INSTAGRAM_COOKIES_FILE")
     instagram_cookies_content_b64: str | None = Field(default=None, alias="INSTAGRAM_COOKIES_CONTENT_B64")

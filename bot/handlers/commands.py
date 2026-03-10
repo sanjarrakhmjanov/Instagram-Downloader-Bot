@@ -1,5 +1,6 @@
 from html import escape
 import logging
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -7,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.types import Message
 from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import FSInputFile
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +62,19 @@ async def _send_start_landing(message: Message, settings: Settings, lang: str) -
             return
         except (TelegramBadRequest, TelegramNetworkError) as exc:
             logger.warning("Start animation failed: %s", exc)
+
+    if settings.welcome_local_image_path:
+        local_path = Path(settings.welcome_local_image_path)
+        if local_path.exists() and local_path.is_file():
+            try:
+                await message.answer_photo(
+                    FSInputFile(str(local_path)),
+                    caption=text,
+                    reply_markup=remove_kb,
+                )
+                return
+            except (TelegramBadRequest, TelegramNetworkError, OSError) as exc:
+                logger.warning("Start photo(local) failed: %s", exc)
 
     await message.answer(text, reply_markup=remove_kb)
 
