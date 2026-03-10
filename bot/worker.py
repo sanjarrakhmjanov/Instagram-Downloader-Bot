@@ -195,6 +195,81 @@ async def _ensure_legacy_mobile_compatible_video(path: Path, ffmpeg_path: str | 
     return converted
 
 
+async def _ensure_ultra_safe_mobile_video(path: Path, ffmpeg_path: str | None) -> Path:
+    if not ffmpeg_path:
+        return path
+    converted = path.with_name(f"{path.stem}.ultrasafe.mp4")
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-i",
+        str(path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-sn",
+        "-dn",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-vf",
+        "scale='trunc(min(720,iw)/2)*2':'trunc(min(720,iw)*ih/iw/2)*2',fps=25,setsar=1,format=yuv420p",
+        "-vsync",
+        "cfr",
+        "-r",
+        "25",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.0",
+        "-x264-params",
+        "cabac=0:bframes=0:ref=1:keyint=50:min-keyint=50:scenecut=0",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "27",
+        "-g",
+        "50",
+        "-c:a",
+        "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-b:a",
+        "96k",
+        "-af",
+        "aresample=async=1:first_pts=0",
+        "-movflags",
+        "+faststart",
+        str(converted),
+    ]
+
+    def _run() -> int:
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+
+    code = await asyncio.to_thread(_run)
+    if code != 0 or not converted.exists() or converted.stat().st_size == 0:
+        with suppress(Exception):
+            if converted.exists():
+                converted.unlink()
+        return path
+    return converted
+
+
 def _fps_from_rate(rate: str | None) -> float | None:
     if not rate or rate in {"0/0", "N/A"}:
         return None
@@ -534,6 +609,12 @@ async def worker() -> None:
                     if legacy != video_path:
                         generated_paths.append(legacy)
                         video_path = legacy
+                        probe_after = _probe_media(video_path, ffprobe_bin)
+                if ffmpeg_bin and not _is_telegram_video_compatible(probe_after):
+                    ultra = await _ensure_ultra_safe_mobile_video(video_path, ffmpeg_bin)
+                    if ultra != video_path:
+                        generated_paths.append(ultra)
+                        video_path = ultra
                         probe_after = _probe_media(video_path, ffprobe_bin)
                 width, height, duration = _extract_video_meta(probe_after)
                 logger.info(
