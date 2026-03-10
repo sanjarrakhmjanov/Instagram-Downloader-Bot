@@ -457,6 +457,69 @@ class DownloaderService:
                 paths.append(target)
         return paths
 
+    def _fallback_instagram_sidecar_assets(self, page_url: str, target_dir: Path) -> list[Path]:
+        try:
+            html_text = self._fetch_instagram_page(page_url)
+        except Exception:
+            return []
+
+        urls: "OrderedDict[str, str]" = OrderedDict()
+
+        # JSON blobs embedded by Instagram often contain sidecar children in this shape:
+        # "edge_sidecar_to_children":{"edges":[{"node":{...}}, ...]}
+        sidecar_re = re.compile(
+            r'"edge_sidecar_to_children"\s*:\s*\{"edges"\s*:\s*\[(.*?)\]\s*\}',
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        blocks = sidecar_re.findall(html_text)
+        for block in blocks:
+            node_re = re.compile(r'"node"\s*:\s*\{(.*?)\}(?:,\s*\{|\s*$)', flags=re.DOTALL)
+            nodes = node_re.findall(block) or [block]
+            for node in nodes:
+                # video first
+                for m in re.finditer(r'"video_url"\s*:\s*"([^"]+)"', node, flags=re.IGNORECASE):
+                    u = self._decode_escaped_url(m.group(1))
+                    low = u.lower()
+                    if not (u.startswith("http") and self._is_probable_instagram_media_url(u)):
+                        continue
+                    if "t51.2885-15" not in low and "/vp/" not in low:
+                        continue
+                    urls.setdefault(u, ".mp4")
+                # image variants
+                for pat in (
+                    r'"display_url"\s*:\s*"([^"]+)"',
+                    r'"display_resources"\s*:\s*\[\{"src"\s*:\s*"([^"]+)"',
+                    r'"thumbnail_src"\s*:\s*"([^"]+)"',
+                ):
+                    for m in re.finditer(pat, node, flags=re.IGNORECASE):
+                        u = self._decode_escaped_url(m.group(1))
+                        low = u.lower()
+                        if not (u.startswith("http") and self._is_probable_instagram_media_url(u)):
+                            continue
+                        if "t51.2885-15" not in low and "/vp/" not in low:
+                            continue
+                        ext = ".jpg"
+                        if ".png" in low:
+                            ext = ".png"
+                        elif ".webp" in low:
+                            ext = ".webp"
+                        urls.setdefault(u, ext)
+
+        paths: list[Path] = []
+        for idx, (u, ext) in enumerate(urls.items(), 1):
+            target = target_dir / f"instagram_sidecar_{idx:03d}{ext}"
+            try:
+                urllib.request.urlretrieve(u, target)
+            except Exception:
+                continue
+            if target.exists() and target.stat().st_size > 0:
+                if ext != ".mp4" and target.stat().st_size < 40 * 1024:
+                    with contextlib.suppress(Exception):
+                        target.unlink()
+                    continue
+                paths.append(target)
+        return paths
+
     def _fallback_instagram_oembed_asset(self, page_url: str, target_dir: Path) -> Path | None:
         normalized = page_url if page_url.endswith("/") else f"{page_url}/"
         api_url = f"https://www.instagram.com/api/v1/oembed/?url={quote(normalized, safe=':/?=&')}"
@@ -666,6 +729,9 @@ class DownloaderService:
                                 meta_assets = self._download_direct_media_assets(meta_info, download_dir)
                                 if meta_assets:
                                     return [str(p) for p in meta_assets], info
+                            sidecar_assets = self._fallback_instagram_sidecar_assets(url, download_dir)
+                            if sidecar_assets:
+                                return [str(p) for p in sidecar_assets], info
 
                         if requested_paths:
                             return [str(p) for p in requested_paths], info
@@ -729,6 +795,12 @@ class DownloaderService:
                 structured_assets = self._fallback_instagram_post_structured_assets(url, download_dir)
                 if structured_assets:
                     return [str(p) for p in structured_assets], {
+                        "title": "Instagram media",
+                        "duration": None,
+                    }
+                sidecar_assets = self._fallback_instagram_sidecar_assets(url, download_dir)
+                if sidecar_assets:
+                    return [str(p) for p in sidecar_assets], {
                         "title": "Instagram media",
                         "duration": None,
                     }
