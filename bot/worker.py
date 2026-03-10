@@ -10,7 +10,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile, InputMediaPhoto
+from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
 from redis.asyncio import Redis
 
 from bot.config import ensure_instagram_cookies_file, get_settings
@@ -63,7 +63,7 @@ async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -
         "-1",
         "-vf",
         # Strict compatibility profile for older Telegram mobile decoders.
-        "scale='min(1280,iw)':-2:flags=lanczos,fps=30,format=yuv420p",
+        "scale='trunc(min(1280,iw)/2)*2':'trunc(min(1280,iw)*ih/iw/2)*2':flags=lanczos,fps=30,setsar=1,format=yuv420p",
         "-vsync",
         "cfr",
         "-r",
@@ -419,26 +419,7 @@ async def worker() -> None:
                 raise FileNotFoundError("Downloaded file not found")
             max_size_bytes = settings.max_file_size_mb * 1024 * 1024
 
-            if result.media_kind == "audio":
-                audio_path = result.file_paths[0]
-                if audio_path.stat().st_size > max_size_bytes:
-                    await bot.edit_message_text(
-                        chat_id=job.chat_id,
-                        message_id=status_msg.message_id,
-                        text="Audio file too large for Telegram upload.",
-                    )
-                    continue
-                await bot.send_audio(
-                    chat_id=job.chat_id,
-                    audio=FSInputFile(str(audio_path)),
-                )
-            elif result.media_kind == "video":
-                video_ext = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
-                source_path = next(
-                    (p for p in result.file_paths if p.suffix.lower() in video_ext and p.exists()),
-                    result.file_paths[0],
-                )
-                promo_line = tr("promo_line", job.language)
+            async def _prepare_video_for_send(source_path: Path, duration_hint: int | None) -> tuple[Path, int | None, int | None, int | None]:
                 probe_before = _probe_media(source_path, ffprobe_bin)
                 logger.info(
                     "Video probe before processing",
@@ -450,22 +431,19 @@ async def worker() -> None:
                     },
                 )
 
-                # Always normalize Instagram video to a strict mobile-safe profile.
-                # This avoids edge cases where Telegram mobile decoders freeze video with audio still playing.
                 video_path = source_path
                 converted = await _ensure_mobile_compatible_video(video_path, ffmpeg_bin)
                 if converted != video_path:
                     generated_paths.append(converted)
                     video_path = converted
                 else:
-                    # If re-encode was skipped/unavailable, at least move moov atom for stream start.
                     remuxed = await _remux_faststart(video_path, ffmpeg_bin)
                     if remuxed != video_path:
                         generated_paths.append(remuxed)
                         video_path = remuxed
 
                 if video_path.stat().st_size > max_size_bytes:
-                    duration_for_compress = result.duration_sec
+                    duration_for_compress = duration_hint
                     if not duration_for_compress:
                         _, _, duration_for_compress = _extract_video_meta(_probe_media(video_path, ffprobe_bin))
                     compressed = await _compress_to_target_size(
@@ -479,12 +457,7 @@ async def worker() -> None:
                         video_path = compressed
 
                 if video_path.stat().st_size > max_size_bytes:
-                    await bot.edit_message_text(
-                        chat_id=job.chat_id,
-                        message_id=status_msg.message_id,
-                        text="Video file too large for Telegram upload.",
-                    )
-                    continue
+                    raise ValueError("Video file too large for Telegram upload.")
 
                 probe_after = _probe_media(video_path, ffprobe_bin)
                 width, height, duration = _extract_video_meta(probe_after)
@@ -499,6 +472,61 @@ async def worker() -> None:
                         "duration": duration,
                         "compatible": _is_telegram_video_compatible(probe_after),
                     },
+                )
+                return video_path, width, height, duration or duration_hint
+
+            if result.media_kind == "audio":
+                audio_path = result.file_paths[0]
+                if audio_path.stat().st_size > max_size_bytes:
+                    await bot.edit_message_text(
+                        chat_id=job.chat_id,
+                        message_id=status_msg.message_id,
+                        text="Audio file too large for Telegram upload.",
+                    )
+                    continue
+                await bot.send_audio(
+                    chat_id=job.chat_id,
+                    audio=FSInputFile(str(audio_path)),
+                )
+            elif len(result.file_paths) > 1 and result.option != "mp3":
+                promo_line = tr("promo_line", job.language)
+                prepared_media: list[InputMediaPhoto | InputMediaVideo] = []
+                for media_path in [p for p in result.file_paths if p.exists()]:
+                    kind = _classify_by_ext(media_path)
+                    if kind == "video":
+                        video_path, width, height, duration = await _prepare_video_for_send(
+                            media_path,
+                            result.duration_sec,
+                        )
+                        prepared_media.append(
+                            InputMediaVideo(
+                                media=FSInputFile(str(video_path)),
+                                width=width,
+                                height=height,
+                                duration=duration,
+                                supports_streaming=True,
+                            )
+                        )
+                    elif kind == "photo":
+                        prepared_media.append(InputMediaPhoto(media=FSInputFile(str(media_path))))
+
+                if not prepared_media:
+                    raise FileNotFoundError("Prepared media group is empty")
+
+                chunks = [prepared_media[i : i + 10] for i in range(0, len(prepared_media), 10)]
+                for chunk in chunks:
+                    await bot.send_media_group(chat_id=job.chat_id, media=chunk)
+                await bot.send_message(chat_id=job.chat_id, text=promo_line)
+            elif result.media_kind == "video":
+                video_ext = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
+                source_path = next(
+                    (p for p in result.file_paths if p.suffix.lower() in video_ext and p.exists()),
+                    result.file_paths[0],
+                )
+                promo_line = tr("promo_line", job.language)
+                video_path, width, height, duration = await _prepare_video_for_send(
+                    source_path,
+                    result.duration_sec,
                 )
                 if cancel_requested:
                     raise asyncio.CancelledError("Cancelled by user")
