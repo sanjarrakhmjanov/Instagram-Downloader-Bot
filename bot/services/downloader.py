@@ -569,9 +569,9 @@ class DownloaderService:
 
                         entry_count = len([e for e in (info.get("entries") or []) if isinstance(e, dict)])
                         requested_paths = self._find_requested_filepaths(info)
-                        if is_instagram_post and entry_count > 1:
-                            # For carousel posts, extractor may materialize only the first item to disk.
-                            # Backfill remaining media from entry URLs and return all unique files.
+                        if is_instagram_post and option != "mp3":
+                            # For Instagram posts, aggressively gather full carousel even when extractor
+                            # materializes only a subset of entries.
                             direct_assets = self._download_direct_media_assets(info, download_dir)
                             merged: list[Path] = []
                             seen: set[str] = set()
@@ -582,7 +582,28 @@ class DownloaderService:
                                 seen.add(ps)
                                 if p.exists() and p.stat().st_size > 0:
                                     merged.append(p)
+
+                            # If still single/no asset, enrich from HTML gallery fallback and merge.
+                            if len(merged) <= 1:
+                                html_assets = self._fallback_instagram_html_assets(
+                                    url,
+                                    download_dir,
+                                    prefer_video=False,
+                                )
+                                gallery_assets = self._fallback_instagram_gallery_assets(url, download_dir)
+                                for p in [*html_assets, *gallery_assets]:
+                                    ps = str(p.resolve()) if p.exists() else str(p)
+                                    if ps in seen:
+                                        continue
+                                    seen.add(ps)
+                                    if p.exists() and p.stat().st_size > 0:
+                                        merged.append(p)
+
                             if len(merged) > 1:
+                                logger.info(
+                                    "Instagram post carousel assembled",
+                                    extra={"entry_count": entry_count, "asset_count": len(merged)},
+                                )
                                 return [str(p) for p in merged], info
 
                         if requested_paths:
@@ -599,6 +620,9 @@ class DownloaderService:
                     err = str(exc).lower()
                     if "requested format is not available" in err:
                         logger.warning("Format unavailable, trying fallback")
+                        continue
+                    if "no video formats found" in err:
+                        logger.warning("No video formats found, trying fallback chain")
                         continue
                     if "no downloadable file was created" in err:
                         logger.warning("No file produced, trying next fallback")

@@ -75,7 +75,7 @@ async def _ensure_mobile_compatible_video(path: Path, ffmpeg_path: str | None) -
         "-profile:v",
         "baseline",
         "-level",
-        "3.0",
+        "4.0",
         "-x264-params",
         "keyint=60:min-keyint=60:scenecut=0",
         "-preset",
@@ -160,7 +160,7 @@ async def _ensure_legacy_mobile_compatible_video(path: Path, ffmpeg_path: str | 
         "-profile:v",
         "baseline",
         "-level",
-        "3.0",
+        "3.1",
         "-preset",
         "veryfast",
         "-crf",
@@ -361,7 +361,7 @@ async def _compress_to_target_size(
         "-profile:v",
         "baseline",
         "-level",
-        "3.0",
+        "4.0",
         "-r",
         "30",
         "-vsync",
@@ -632,12 +632,30 @@ async def worker() -> None:
                     )
                     logger.info("Delivery method: send_video", extra={"request_id": job.request_id})
                 except TelegramBadRequest:
-                    await bot.send_document(
-                        chat_id=job.chat_id,
-                        document=FSInputFile(str(video_path)),
-                        caption=promo_line,
-                    )
-                    logger.warning("Delivery fallback: send_document", extra={"request_id": job.request_id})
+                    retry_path = await _ensure_legacy_mobile_compatible_video(video_path, ffmpeg_bin)
+                    if retry_path != video_path:
+                        generated_paths.append(retry_path)
+                        video_path = retry_path
+                        retry_probe = _probe_media(video_path, ffprobe_bin)
+                        width, height, duration = _extract_video_meta(retry_probe)
+                    try:
+                        await bot.send_video(
+                            chat_id=job.chat_id,
+                            video=FSInputFile(str(video_path)),
+                            caption=promo_line,
+                            supports_streaming=True,
+                            width=width,
+                            height=height,
+                            duration=duration or result.duration_sec,
+                        )
+                        logger.warning("Delivery retry method: send_video", extra={"request_id": job.request_id})
+                    except TelegramBadRequest:
+                        await bot.send_document(
+                            chat_id=job.chat_id,
+                            document=FSInputFile(str(video_path)),
+                            caption=promo_line,
+                        )
+                        logger.warning("Delivery fallback: send_document", extra={"request_id": job.request_id})
             elif result.media_kind == "photo":
                 promo_line = tr("promo_line", job.language)
                 photo_paths = [p for p in result.file_paths if _classify_by_ext(p) == "photo" and p.exists()]
